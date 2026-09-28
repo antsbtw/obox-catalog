@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# 配方公共函数。App 执行器把它与配方脚本一起上传到同一临时目录;配方用
-#   . "$(dirname "$0")/obox.sh"
+# 配方公共函数。App 执行器把它上传到临时目录的 lib/,配方脚本在临时目录根上;配方用
+#   . "$(dirname "$0")/lib/obox.sh"
 # 引入。约定见 README「配方执行约定」。
 
 # obox_json_str 把任意字符串编码为 JSON 字符串字面量(含引号)。

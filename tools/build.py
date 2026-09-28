@@ -4,7 +4,7 @@
 包内 index.json 带序号与每个文件的 sha256。序号在被签名的内容里 —— App 以验签后包内的
 序号判断回滚,不信目录接口返回的 sequence(回执 R-6 ③)。
 
-用法: python3 tools/build.py --sequence 42 --out dist [--created-at 2026-09-28T00:00:00Z]
+用法: python3 tools/build.py --sequence 42 --out dist [--generated-at 2026-09-28T00:00:00Z]
 """
 import argparse
 import gzip
@@ -43,30 +43,22 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sequence", type=int, required=True)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--created-at", default=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    ap.add_argument("--generated-at", dest="created_at", default=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
     a = ap.parse_args()
     if a.sequence < 1:
         raise SystemExit("sequence must be >= 1")
 
     files = collect()
-    apps = {}
-    for rel, data, _ in files:
-        if rel.startswith("apps/"):
-            app = rel.split("/")[1]
-            apps.setdefault(app, {})[rel[len(f"apps/{app}/"):]] = sha256(data)
-    versions = {}
-    for app in apps:
-        with open(os.path.join(ROOT, "apps", app, "manifest.json")) as f:
-            versions[app] = json.load(f)["version"]
     with open(os.path.join(ROOT, "platform.json")) as f:
         platform = json.load(f)
+    # 形状与客户端实现对齐(CLIENT_ACK_BACKEND_DELIVERY_2026-09-28 §3):
+    # files = 包内每个文件(index.json 自身除外)的 sha256;不在这里的文件 App 一律拒绝。
     index = {
         "schema": 1,
         "sequence": a.sequence,
-        "created_at": a.created_at,
+        "generated_at": a.created_at,
         "platform": platform,
-        "lib": {"obox.sh": sha256(dict((r, d) for r, d, _ in files)["lib/obox.sh"])},
-        "apps": [{"id": app, "version": versions[app], "files": apps[app]} for app in sorted(apps)],
+        "files": {rel: sha256(data) for rel, data, _ in files},
     }
     index_bytes = (json.dumps(index, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
 

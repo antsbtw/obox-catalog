@@ -29,7 +29,9 @@ keys/*.pub.pem                签名公钥(App 内置同一份)
 
 | 项 | 约定 |
 |---|---|
-| 上传 | App 把本次要用的脚本与 `lib/obox.sh` 写到 `/tmp/obox-<随机>/`,权限 700,结束后(无论成败)删除 |
+| 上传 | App 把本次要用的脚本写到临时目录 `/tmp/obox-<随机>/` 的**根**上,`lib/` 下的文件写到其 `lib/`;权限 700,结束后(无论成败)删除 |
+| 路径 | 上传到机器上的路径最多两级(如 `status`、`lib/obox.sh`),每级只含字母数字与 `._-`,不以点开头 |
+| 入口 | 入口脚本位于临时目录根上,按自身 shebang(`#!/bin/bash`)执行,**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
 | 身份 | 非 root 时 `sudo -n` |
 | 参数 | 非密参数经环境变量 `OBOX_PARAM_<KEY大写>`;**`secret` 类型经 stdin**(环境变量在 `/proc` 可见) |
 | 日志 | stdout/stderr 逐行实时显示在 App |
@@ -45,8 +47,14 @@ keys/*.pub.pem                签名公钥(App 内置同一份)
 
 ## 目录包格式(App 验签依据)
 
-- `catalog-<N>.tar.gz`:确定性打包(同样的输入与序号 → 同样的字节)。包内 `index.json` 含
-  `sequence`、`created_at`、`platform`,以及每个应用每个文件的 sha256
+- `catalog-<N>.tar.gz`:确定性打包(同样的输入与序号 → 同样的字节)。包内 `index.json`:
+  ```json
+  {"schema": 1, "sequence": N, "generated_at": "2026-09-28T00:00:00Z",
+   "platform": {…platform.json…},
+   "files": {"apps/hello/status": "<sha256>", "lib/obox.sh": "<sha256>", "platform.json": "<sha256>", …}}
+  ```
+  `files` 覆盖包内除 `index.json` 外的**全部**文件,键为包内路径;不在 `files` 里的文件 App 一律拒绝。
+  包内路径是 `apps/<id>/<文件>`、`lib/<文件>`、`platform.json`;上传到机器时去掉 `apps/<id>/` 前缀
 - `catalog-<N>.tar.gz.sig`:`{"alg":"ed25519","key_id":"<16 hex>","sig":"<base64>"}`
   - 签名对象 = 包文件**全部字节**,RFC 8032 Ed25519(非预哈希)。iOS:`Curve25519.Signing.PublicKey.isValidSignature(sig, for: bundle)`
   - `key_id` = sha256(32 字节原始公钥) 的前 16 个十六进制字符,用来选内置公钥
@@ -73,7 +81,7 @@ https://github.com/antsbtw/obox-catalog/releases/latest/download/latest.json
 ```bash
 openssl genpkey -algorithm ed25519 -out /tmp/test.pem
 mkdir -p /tmp/k && openssl pkey -in /tmp/test.pem -pubout -out /tmp/k/test.pub.pem
-python3 tools/build.py --sequence 1 --out /tmp/dist
+python3 tools/build.py --sequence 1 --out /tmp/dist   # 可加 --generated-at 固定时间
 tools/sign.sh /tmp/dist/catalog-1.tar.gz /tmp/test.pem
 tools/verify.sh /tmp/dist/catalog-1.tar.gz /tmp/k
 ```

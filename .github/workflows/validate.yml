@@ -26,18 +26,18 @@ jobs:
 
       - name: Build is deterministic
         run: |
-          python3 tools/build.py --sequence 1 --out a --created-at 2000-01-01T00:00:00Z
-          python3 tools/build.py --sequence 1 --out b --created-at 2000-01-01T00:00:00Z
+          python3 tools/build.py --sequence 1 --out a --generated-at 2000-01-01T00:00:00Z
+          python3 tools/build.py --sequence 1 --out b --generated-at 2000-01-01T00:00:00Z
           cmp a/catalog-1.tar.gz b/catalog-1.tar.gz
 
       # C-3 雏形:在真实虚拟机(GitHub runner 是完整 VM,有 systemd)上执行每个应用的 status,
-      # 按 App 执行器的方式(脚本与 lib 放同一临时目录、sudo -n)跑,并解析最后一行 OBOX_RESULT。
+      # 按 App 执行器的方式(入口脚本在临时目录根、lib/ 在其下、sudo -n)跑,并解析最后一行 OBOX_RESULT。
       # install → status → uninstall 全流程与 Debian 12 虚拟机在 C-3 补齐。
       - name: status smoke (ubuntu-24.04 VM)
         run: |
           for app in apps/*/; do
             id=$(basename "$app"); tmp=$(mktemp -d /tmp/obox-XXXXXX); chmod 700 "$tmp"
-            cp "$app"/* lib/obox.sh "$tmp"/
+            mkdir "$tmp/lib"; cp "$app"/* "$tmp"/; cp lib/obox.sh "$tmp/lib/"
             out=$(sudo -n "$tmp/status"); rm -rf "$tmp"
             last=$(tail -1 <<<"$out")
             [[ $last == OBOX_RESULT\ * ]] || { echo "$id: last line is not OBOX_RESULT"; exit 1; }

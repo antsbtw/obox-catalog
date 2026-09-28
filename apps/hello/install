@@ -1,6 +1,6 @@
 #!/bin/bash
 # 无需安装:可重入,再跑一次结果相同。
 set -euo pipefail
-. "$(dirname "$0")/obox.sh"
+. "$(dirname "$0")/lib/obox.sh"
 echo "[hello] nothing to install"
 obox_result '{"ok":true}'

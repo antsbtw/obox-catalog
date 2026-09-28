@@ -1,7 +1,7 @@
 #!/bin/bash
 # 只读。I0 示例配方:证明"下载 → 验签 → 执行 → 解析"这条链通。
 set -euo pipefail
-. "$(dirname "$0")/obox.sh"
+. "$(dirname "$0")/lib/obox.sh"
 
 os=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}") || os=unknown
 kernel=$(uname -r)
