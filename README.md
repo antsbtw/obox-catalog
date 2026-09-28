@@ -17,7 +17,7 @@ apps/<id>/uninstall
 apps/<id>/status              只读
 apps/<id>/action-<id>         每个 actions[] 条目一个
 apps/<id>/inspect-<id>        可选:透明度面板的只读查询
-lib/obox.sh                   配方公共函数(随包下发,与配方放同一临时目录)
+lib/obox.sh                   配方公共函数(随包下发,上传到临时目录的 lib/)
 platform.json                 签名的平台配置(兜底 release tag、镜像偏好)
 tools/                        validate / build / sign / verify / keygen
 keys/*.pub.pem                签名公钥(App 内置同一份)
