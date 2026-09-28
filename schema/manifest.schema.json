@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/antsbtw/obox-catalog/schema/manifest.schema.json",
+  "title": "OBox app manifest (schema v1)",
+  "description": "见 saas-platform backend-v3/document/obox/09-应用平台-清单与配方-设计.md §4.1。新增参数/输出类型 = App 需要发版。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "version", "min_client", "name", "summary", "category", "requires", "actions", "outputs", "hosted"],
+  "properties": {
+    "schema": { "const": 1 },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+    "version": { "$ref": "#/$defs/semver" },
+    "min_client": { "$ref": "#/$defs/semver" },
+    "name": { "$ref": "#/$defs/i18n" },
+    "summary": { "$ref": "#/$defs/i18n" },
+    "icon": { "type": "string", "pattern": "^icons/[a-z0-9._-]+\\.(png|svg)$" },
+    "category": { "enum": ["vpn", "network", "web", "communication", "storage", "tools", "system"] },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "os": { "type": "array", "items": { "type": "string", "pattern": "^(debian|ubuntu)(>=[0-9]+(\\.[0-9]+)?)?$" }, "minItems": 1 },
+        "arch": { "type": "array", "items": { "enum": ["amd64", "arm64"] }, "minItems": 1, "uniqueItems": true },
+        "memory_mb": { "type": "integer", "minimum": 0 },
+        "disk_mb": { "type": "integer", "minimum": 0 },
+        "components": { "type": "array", "items": { "$ref": "#/$defs/appId" }, "uniqueItems": true }
+      }
+    },
+    "conflicts": { "type": "array", "items": { "$ref": "#/$defs/appId" }, "uniqueItems": true },
+    "params": { "type": "array", "items": { "$ref": "#/$defs/param" } },
+    "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+    "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+    "outputs": { "type": "array", "items": { "$ref": "#/$defs/output" } },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "extensions": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" }, "uniqueItems": true }
+      }
+    },
+    "hosted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed"],
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "hidden_params": { "type": "array", "items": { "$ref": "#/$defs/key" }, "uniqueItems": true }
+      }
+    }
+  },
+  "$defs": {
+    "semver": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "appId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,31}$" },
+    "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" },
+    "i18n": {
+      "type": "object",
+      "required": ["zh-Hans"],
+      "propertyNames": { "pattern": "^[a-z]{2}(-[A-Za-z]{2,4})?$" },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 200 }
+    },
+    "param": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "type", "label"],
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "type": { "enum": ["text", "number", "bool", "select", "port", "secret", "domain"] },
+        "required": { "type": "boolean" },
+        "default": {},
+        "label": { "$ref": "#/$defs/i18n" },
+        "help": { "$ref": "#/$defs/i18n" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "label"],
+            "properties": { "value": { "type": "string" }, "label": { "$ref": "#/$defs/i18n" } }
+          }
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "select" } } }, "then": { "required": ["options"] } },
+        { "if": { "properties": { "type": { "const": "secret" } } }, "then": { "not": { "required": ["default"] } } }
+      ]
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port", "protocols", "public"],
+      "properties": {
+        "port": { "oneOf": [ { "type": "integer", "minimum": 1, "maximum": 65535 }, { "const": "dynamic" } ] },
+        "protocols": { "type": "array", "items": { "enum": ["tcp", "udp"] }, "minItems": 1, "uniqueItems": true },
+        "public": { "type": "boolean" },
+        "purpose": { "$ref": "#/$defs/i18n" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "label": { "$ref": "#/$defs/i18n" },
+        "confirm": { "type": "boolean" },
+        "destructive": { "type": "boolean" }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "type", "label"],
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "type": { "enum": ["text", "copy", "url", "qr", "secret"] },
+        "label": { "$ref": "#/$defs/i18n" }
+      }
+    }
+  }
+}

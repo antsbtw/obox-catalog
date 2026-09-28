@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+. "$(dirname "$0")/obox.sh"
+echo "[hello] nothing to uninstall"
+obox_result '{"ok":true}'

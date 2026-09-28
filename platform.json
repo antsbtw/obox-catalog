@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "obox_release_fallback": "v1.13.1",
+  "image_preference": {
+    "aws": ["debian_12", "ubuntu_24_04"],
+    "digitalocean": ["debian-12-x64", "ubuntu-24-04-x64"]
+  }
+}

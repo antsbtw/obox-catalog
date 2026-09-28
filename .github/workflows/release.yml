@@ -1,0 +1,67 @@
+name: release
+
+# main 上目录内容一变就发一版:catalog-<N>,N 严格递增(防回滚依赖它)。
+# 签名在受保护环境 catalog-signing 里做 —— 需指定审批人批准才会运行;签名私钥只存在该环境的 secret 里,
+# 不在任何后端服务器上(回执 R-6)。
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/**', 'lib/**', 'platform.json', 'schema/**', 'tools/build.py']
+  workflow_dispatch:
+
+concurrency:
+  group: catalog-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    environment: catalog-signing
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate
+        run: |
+          pip install --quiet jsonschema==4.23.0
+          python3 tools/validate.py
+
+      - name: Next sequence
+        id: seq
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1000 --json tagName -q '.[].tagName' \
+                 | sed -n 's/^catalog-\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)
+          echo "n=$(( ${last:-0} + 1 ))" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: python3 tools/build.py --sequence ${{ steps.seq.outputs.n }} --out dist
+
+      - name: Sign
+        env:
+          CATALOG_SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
+        run: |
+          umask 077
+          key="$RUNNER_TEMP/signing.pem"
+          printf '%s\n' "$CATALOG_SIGNING_KEY" > "$key"
+          tools/sign.sh dist/catalog-${{ steps.seq.outputs.n }}.tar.gz "$key"
+          rm -f "$key"
+
+      - name: Verify against committed public keys
+        run: tools/verify.sh dist/catalog-${{ steps.seq.outputs.n }}.tar.gz keys
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=${{ steps.seq.outputs.n }}
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/catalog-$n"
+          # 指针文件不签名,只用来找最新一版;App 下载后以验签通过的包内序号为准
+          printf '{"sequence":%d,"bundle_url":"%s/catalog-%d.tar.gz","signature_url":"%s/catalog-%d.tar.gz.sig"}\n' \
+            "$n" "$base" "$n" "$base" "$n" > dist/latest.json
+          gh release create "catalog-$n" dist/catalog-$n.tar.gz dist/catalog-$n.tar.gz.sig dist/latest.json \
+            --title "catalog-$n" --notes "commit ${GITHUB_SHA::7} · sha256 $(sha256sum dist/catalog-$n.tar.gz | cut -d' ' -f1)"

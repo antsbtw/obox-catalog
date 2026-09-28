@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "id": "hello",
+  "version": "1.0.0",
+  "min_client": "1.4.0",
+  "name": { "zh-Hans": "系统信息", "en": "System info" },
+  "summary": { "zh-Hans": "只读:显示这台机器的系统、内核、内存与磁盘", "en": "Read-only: OS, kernel, memory and disk of this machine" },
+  "category": "tools",
+  "requires": { "os": ["debian>=12", "ubuntu>=22.04"], "arch": ["amd64", "arm64"], "memory_mb": 0, "disk_mb": 0, "components": [] },
+  "conflicts": [],
+  "params": [],
+  "ports": [],
+  "actions": [],
+  "outputs": [
+    { "key": "os", "type": "text", "label": { "zh-Hans": "系统", "en": "OS" } },
+    { "key": "kernel", "type": "text", "label": { "zh-Hans": "内核", "en": "Kernel" } },
+    { "key": "arch", "type": "text", "label": { "zh-Hans": "架构", "en": "Architecture" } },
+    { "key": "memory", "type": "text", "label": { "zh-Hans": "内存", "en": "Memory" } },
+    { "key": "disk", "type": "text", "label": { "zh-Hans": "磁盘(/)", "en": "Disk (/)" } }
+  ],
+  "ui": { "extensions": [] },
+  "hosted": { "allowed": true, "hidden_params": [] }
+}

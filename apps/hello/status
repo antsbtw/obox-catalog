@@ -1,0 +1,13 @@
+#!/bin/bash
+# 只读。I0 示例配方:证明"下载 → 验签 → 执行 → 解析"这条链通。
+set -euo pipefail
+. "$(dirname "$0")/obox.sh"
+
+os=$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-unknown}") || os=unknown
+kernel=$(uname -r)
+arch=$(uname -m)
+mem=$(awk '/^MemTotal:/ {printf "%.0f MB", $2/1024}' /proc/meminfo 2>/dev/null || echo unknown)
+disk=$(df -h / 2>/dev/null | awk 'NR==2 {print $4 " free of " $2}' || echo unknown)
+
+echo "[hello] $os / $kernel / $arch"
+obox_result "{\"state\":\"running\",\"version\":\"1.0.0\",\"ports\":[],\"outputs\":{\"os\":$(obox_json_str "$os"),\"kernel\":$(obox_json_str "$kernel"),\"arch\":$(obox_json_str "$arch"),\"memory\":$(obox_json_str "$mem"),\"disk\":$(obox_json_str "$disk")}}"
