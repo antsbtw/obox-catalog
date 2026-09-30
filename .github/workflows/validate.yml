@@ -18,6 +18,8 @@ jobs:
         run: |
           pip install --quiet jsonschema==4.23.0
           python3 tools/validate.py
+          python3 tools/test_validate.py
+          python3 tools/test_lifecycle.py
 
       - name: shellcheck
         run: |
@@ -30,9 +32,7 @@ jobs:
           python3 tools/build.py --sequence 1 --out b --generated-at 2000-01-01T00:00:00Z
           cmp a/catalog-1.tar.gz b/catalog-1.tar.gz
 
-      # C-3 雏形:在真实虚拟机(GitHub runner 是完整 VM,有 systemd)上执行每个应用的 status,
-      # 按 App 执行器的方式(入口脚本在临时目录根、lib/ 在其下、sudo -n)跑,并解析最后一行 OBOX_RESULT。
-      # install → status → uninstall 全流程与 Debian 12 虚拟机在 C-3 补齐。
+      # 每个应用的 status 冒烟(不论有没有 ci/<id>.json);全流程见下面两个 lifecycle 任务。
       - name: status smoke (ubuntu-24.04 VM)
         run: |
           for app in apps/*/; do
@@ -44,3 +44,36 @@ jobs:
             python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert r["state"] in ("running","stopped","failed","not_installed"), r' "${last#OBOX_RESULT }"
             echo "$id: $last"
           done
+
+  # C-3:按 ci/<id>.json 跑 install → status → uninstall → status,执行方式与 App 执行器一致(tools/lifecycle.py)。
+  lifecycle-ubuntu-24-04:
+    runs-on: ubuntu-24.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lifecycle on the runner VM (systemd, sudo -n)
+        run: python3 tools/lifecycle.py --target local --os ubuntu-24.04
+
+  # GitHub 没有 Debian runner:在 ubuntu runner 上起 incus 系统容器(完整 systemd),
+  # 透传 /dev/net/tun(tailscaled 等需要);以 root 执行,对应「隧道会话是 root」的情形。
+  lifecycle-debian-12:
+    runs-on: ubuntu-24.04
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start Debian 12 system container
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q incus
+          sudo incus admin init --auto
+          # runner 上的 docker 把 FORWARD 默认策略设成 DROP,会切断 incus 网桥出网
+          sudo iptables -I DOCKER-USER -i incusbr0 -j ACCEPT 2>/dev/null || true
+          sudo iptables -I DOCKER-USER -o incusbr0 -j ACCEPT 2>/dev/null || true
+          sudo incus launch images:debian/12 d12
+          sudo incus config device add d12 tun unix-char source=/dev/net/tun path=/dev/net/tun
+          for i in $(seq 1 60); do
+            sudo incus exec d12 -- getent hosts deb.debian.org >/dev/null 2>&1 && break
+            sleep 2
+          done
+          sudo incus exec d12 -- sh -c '. /etc/os-release; echo "$PRETTY_NAME"; systemctl is-system-running || true'
+      - name: Lifecycle in Debian 12
+        run: sudo python3 tools/lifecycle.py --target incus:d12 --os debian-12

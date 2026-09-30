@@ -17,6 +17,58 @@ REQUIRED_SCRIPTS = ("install", "uninstall", "status")
 SCRIPT_RE = re.compile(r"^(install|uninstall|status|action-[a-z][a-z0-9-]*|inspect-[a-z][a-z0-9-]*)$")
 
 
+def option_values(param):
+    """select 的取值集合:options 是字符串数组或 {value, label} 数组。"""
+    return [o if isinstance(o, str) else o.get("value") for o in param.get("options", [])]
+
+
+def check_params(params, err):
+    """schema 表达不了的参数交叉检查:select 取值、default、show_if 的引用与取值、show_if 成环。"""
+    by_key = {p.get("key"): p for p in params}
+    for p in params:
+        key = p.get("key")
+        if p.get("type") == "select":
+            values = option_values(p)
+            if len(values) != len(set(values)):
+                err(f"param {key}: duplicate option values")
+            if "default" in p and p["default"] not in values:
+                err(f"param {key}: default {p['default']!r} is not one of the options")
+        for ref, want in (p.get("show_if") or {}).items():
+            if ref == key:
+                err(f"param {key}: show_if refers to itself")
+                continue
+            target = by_key.get(ref)
+            if target is None:
+                err(f"param {key}: show_if refers to unknown param {ref!r}")
+                continue
+            wants = want if isinstance(want, list) else [want]
+            if target.get("type") == "select":
+                bad = [w for w in wants if w not in option_values(target)]
+                if bad:
+                    err(f"param {key}: show_if {ref}={bad!r} is not an option of {ref}")
+            elif target.get("type") == "bool":
+                if any(not isinstance(w, bool) for w in wants):
+                    err(f"param {key}: show_if {ref} must be true/false (bool param)")
+            elif target.get("type") == "secret":
+                err(f"param {key}: show_if cannot depend on secret param {ref!r}")
+    # show_if 依赖不能成环(A 看 B、B 看 A → App 永远算不出显示状态)
+    graph = {k: [r for r in (p.get("show_if") or {}) if r in by_key and r != k] for k, p in by_key.items()}
+    state = {}  # 1 = 访问中, 2 = 完成
+
+    def visit(k):
+        state[k] = 1
+        for r in graph[k]:
+            if state.get(r) == 1 or (state.get(r) is None and visit(r)):
+                return True
+        state[k] = 2
+        return False
+
+    for k in graph:
+        if state.get(k) is None and visit(k):
+            err(f"param {k}: show_if dependencies form a cycle")
+            break
+
+
 def main() -> int:
     with open(os.path.join(ROOT, "schema", "manifest.schema.json")) as f:
         validator = Draft202012Validator(json.load(f))
@@ -46,6 +98,7 @@ def main() -> int:
         outs = [o["key"] for o in m.get("outputs", [])]
         if len(outs) != len(set(outs)):
             err("duplicate output keys")
+        check_params(m.get("params", []), err)
         for hp in m.get("hosted", {}).get("hidden_params", []):
             if hp not in keys:
                 err(f"hosted.hidden_params {hp!r} is not a param")
