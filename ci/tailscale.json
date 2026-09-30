@@ -3,8 +3,12 @@
   "steps": [
     { "run": "install", "params": { "login_method": "web" } },
     { "run": "status", "expect": { "state": "stopped", "outputs": ["login_url"] } },
-    { "run": "action-restart" },
+    { "run": "install", "params": { "login_method": "web" } },
+    { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 1 ]", "desc": "重复 web 安装后只剩一个等登录的 tailscale up" },
+    { "run": "action-restart", "expect": { "state": "stopped", "outputs": ["login_url"] } },
+    { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 1 ]", "desc": "重启后仍只有一个等登录的 tailscale up" },
     { "run": "uninstall" },
+    { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 0 ]", "desc": "卸载后没有残留的 tailscale up" },
     { "run": "status", "expect": { "state": "not_installed" } }
   ]
 }

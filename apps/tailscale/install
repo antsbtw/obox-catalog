@@ -11,6 +11,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./lib/obox.sh
+. ./common.sh
 
 STATE_DIR=$(obox_state_dir tailscale)
 LOGIN_METHOD=${OBOX_PARAM_LOGIN_METHOD:-web}
@@ -61,49 +62,32 @@ fi
 systemctl enable --now tailscaled >/dev/null 2>&1 || obox_fail "tailscaled 服务启动失败"
 
 # 2. 出口节点需要开转发
-UP_ARGS=(--reset)
-[ -n "$HOSTNAME_PARAM" ] && UP_ARGS+=(--hostname="$HOSTNAME_PARAM")
+ts_build_up_args "$HOSTNAME_PARAM" "$EXIT_NODE"
 if [ "$EXIT_NODE" = "true" ]; then
   printf 'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n' > /etc/sysctl.d/99-obox-tailscale.conf
   sysctl -q -p /etc/sysctl.d/99-obox-tailscale.conf || true
-  UP_ARGS+=(--advertise-exit-node)
 else
   rm -f /etc/sysctl.d/99-obox-tailscale.conf
 fi
 
-backend_state() {
-  tailscale status --json 2>/dev/null | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("BackendState",""))
-except Exception: print("")'
-}
-
 # 3. 入网
 if [ -n "$AUTH_KEY" ]; then
+  ts_stop_pending_login
   KEY_FILE="$PWD/.authkey"
   trap 'rm -f "$KEY_FILE"' EXIT
   (umask 077; printf '%s' "$AUTH_KEY" > "$KEY_FILE")
   echo "[tailscale] 用 Auth Key 加入网络"
-  tailscale up "${UP_ARGS[@]}" --auth-key="file:$KEY_FILE" --timeout=90s \
+  tailscale up "${TS_UP_ARGS[@]}" --auth-key="file:$KEY_FILE" --timeout=90s \
     || obox_fail "加入网络失败：Auth Key 无效或已过期"
   rm -f "$KEY_FILE"
-elif [ "$(backend_state)" = "Running" ]; then
+elif [ "$(ts_backend_state)" = "Running" ]; then
   echo "[tailscale] 已登录，按新参数重新配置"
-  tailscale up "${UP_ARGS[@]}" --timeout=60s || obox_fail "重新配置失败"
+  ts_stop_pending_login
+  tailscale up "${TS_UP_ARGS[@]}" --timeout=60s || obox_fail "重新配置失败"
 else
-  # 没有 Auth Key 且未登录：后台发起登录，拿到登录链接交给 App。
-  # tailscale up 会一直等到用户登录完成；放到后台，登录后它自己结束。
+  # 没有 Auth Key 且未登录：后台发起网页登录，拿到登录链接交给 App（重复安装会先结束旧的）
   echo "[tailscale] 等待登录链接"
-  # 日志里有登录链接(谁打开授权,这台机器就进谁的 tailnet),只给 root 读
-  install -m 600 /dev/null /var/log/obox-tailscale-up.log
-  setsid nohup tailscale up "${UP_ARGS[@]}" >/var/log/obox-tailscale-up.log 2>&1 < /dev/null &
-  for _ in $(seq 1 30); do
-    sleep 1
-    URL=$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys
-try: print(json.load(sys.stdin).get("AuthURL",""))
-except Exception: print("")')
-    [ -n "$URL" ] && break
-    [ "$(backend_state)" = "Running" ] && break
-  done
+  ts_start_web_login "${TS_UP_ARGS[@]}"
 fi
 
 # 4. 记下非密参数与版本（不含 auth_key）

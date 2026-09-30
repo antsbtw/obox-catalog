@@ -22,8 +22,10 @@ ci/<app>.json 格式:
    "steps": [
      {"run": "install", "params": {"login_method": "web"}, "secrets": {}},
      {"run": "status", "expect": {"state": "stopped", "outputs": ["login_url"]}},
+     {"check": "[ $(pgrep -fc 'tailscale up') -eq 1 ]", "desc": "只剩一个等登录的进程"},
      {"run": "uninstall"},
      {"run": "status", "expect": {"state": "not_installed"}}]}
+  check:以 root 在目标机器上执行一段 shell,退出码 0 = 通过(用来断言配方留下的系统状态)
 """
 import argparse
 import json
@@ -101,6 +103,11 @@ class Target:
             data = f.read()
         self.sh(f"umask 077; cat > {shlex.quote(remote_path)} && chmod {mode} {shlex.quote(remote_path)}", stdin=data)
 
+    def check(self, script: str) -> subprocess.CompletedProcess:
+        """以 root 执行断言脚本(配方以 root 运行,它留下的状态也要以 root 查)。"""
+        wrapped = f"if [ \"$(id -u)\" = 0 ]; then bash -c {shlex.quote(script)}; else sudo -n bash -c {shlex.quote(script)}; fi"
+        return self.sh(wrapped, check=False)
+
     def run_entry(self, tmp: str, entry: str, interp: str, env: dict, stdin: bytes) -> subprocess.CompletedProcess:
         # App 执行器:工作目录 = 临时目录,按 shebang 用解释器执行(文件无执行权限),非 root 时 sudo -n;
         # 环境变量只带 OBOX_PARAM_*
@@ -167,6 +174,16 @@ def run_app(target: Target, app: str) -> bool:
         manifest = json.load(f)
     ok = True
     for i, step in enumerate(spec["steps"], 1):
+        if "check" in step:
+            r = target.check(step["check"])
+            desc = step.get("desc", step["check"])
+            out = redact((r.stdout + r.stderr).decode(errors="replace")).strip()
+            if r.returncode != 0:
+                print(f"[{app}] step {i}: FAIL check {desc} (exit {r.returncode}) {out}")
+                ok = False
+                break
+            print(f"[{app}] step {i}: ok check {desc} {out}")
+            continue
         entry = step["run"]
         env, secrets = effective_params(manifest, step.get("params", {}))
         secrets.update(step.get("secrets", {}))

@@ -17,6 +17,7 @@ apps/<id>/uninstall
 apps/<id>/status              只读
 apps/<id>/action-<id>         每个 actions[] 条目一个
 apps/<id>/inspect-<id>        可选:透明度面板的只读查询
+apps/<id>/<名字>.sh           可选:应用内共用函数,首行 `# shellcheck shell=bash`,由同应用脚本 `. ./<名字>.sh` 引入,不是入口
 lib/obox.sh                   配方公共函数(随包下发,上传到临时目录的 lib/)
 platform.json                 签名的平台配置(兜底 release tag、镜像偏好)
 ci/<id>.json                  CI 全流程步骤(install → status → uninstall …),不进签名包
@@ -24,7 +25,7 @@ tools/                        validate / build / sign / verify / keygen / lifecy
 keys/*.pub.pem                签名公钥(App 内置同一份)
 ```
 
-目录里只允许以上几种文件;脚本首行必须是 `#!/bin/bash`,必须可执行、过 `bash -n` 与 shellcheck。
+目录里只允许以上几种文件;入口脚本首行必须是 `#!/bin/bash`,必须可执行、过 `bash -n` 与 shellcheck;共用文件过 `bash -n` 与 shellcheck。
 
 ## 配方执行约定(App 执行器实现,对所有配方相同)
 
@@ -112,6 +113,7 @@ tools/verify.sh /tmp/dist/catalog-1.tar.gz /tmp/k
            {"run": "status", "expect": {"state": "not_installed"}}]}
 ```
 
+- 步骤除 `run`(执行入口,可带 `params` / `secrets` / `expect`)外,还可写 `{"check": "<shell>", "desc": "…"}`:以 root 在目标机器上执行,退出码 0 = 通过,用来断言配方留下的系统状态(如后台进程数)。用 `pgrep -f` 时给模式加边界(如 `'(^|/)tailscale up( |$)'`),否则会把检查命令自己的 shell 也数进去
 - Ubuntu 24.04:GitHub runner 本机(完整 VM,systemd,`sudo -n`);
 - Debian 12:runner 上的 incus 系统容器(systemd、透传 `/dev/net/tun`),以 root 执行;
 - 本地调试:`python3 tools/lifecycle.py --target docker:<容器名> <id>`(多数容器没有 systemd,只适合不依赖服务的配方)。

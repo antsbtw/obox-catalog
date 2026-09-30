@@ -3,11 +3,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./lib/obox.sh
+. ./common.sh
 export DEBIAN_FRONTEND=noninteractive
 
 if command -v tailscale >/dev/null 2>&1; then
   echo "[tailscale] 退出登录"
-  tailscale logout >/dev/null 2>&1 || true
+  ts_stop_pending_login
+  # 断网时 logout 会一直等控制服务器：最多等 15 秒，反正接下来要删掉节点状态
+  timeout 15 tailscale logout >/dev/null 2>&1 || true
 fi
 systemctl disable --now tailscaled >/dev/null 2>&1 || true
 echo "[tailscale] 删除软件包"

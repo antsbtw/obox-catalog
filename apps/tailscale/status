@@ -26,7 +26,10 @@ ips = s.get("TailscaleIPs") or me.get("TailscaleIPs") or []
 ipv4 = next((ip for ip in ips if ":" not in ip), ips[0] if ips else "")
 name = (me.get("DNSName") or me.get("HostName") or "").rstrip(".")
 
-if os.environ.get("ACTIVE") != "active":
+active = os.environ.get("ACTIVE")
+if active == "failed":
+    state = "failed"          # 服务崩溃，与「没启动 / 未登录」区分开
+elif active != "active":
     state = "stopped"
 elif backend == "Running":
     state = "running"
