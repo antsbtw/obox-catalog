@@ -74,6 +74,7 @@ jobs:
             sudo incus exec d12 -- getent hosts deb.debian.org >/dev/null 2>&1 && break
             sleep 2
           done
-          sudo incus exec d12 -- sh -c '. /etc/os-release; echo "$PRETTY_NAME"; systemctl is-system-running || true'
+          # 等 systemd 起完再跑配方(装包、启服务的配方在 starting 阶段会偶发失败);degraded 也算起完
+          sudo incus exec d12 -- sh -c '. /etc/os-release; echo "$PRETTY_NAME"; timeout 120 systemctl is-system-running --wait || true'
       - name: Lifecycle in Debian 12
         run: sudo python3 tools/lifecycle.py --target incus:d12 --os debian-12
