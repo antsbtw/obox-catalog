@@ -27,6 +27,7 @@ ci/<app>.json 格式:
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -34,6 +35,15 @@ import uuid
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATES = ("running", "stopped", "failed", "not_installed")
+
+# 仓库公开,Actions 日志任何人可见。登录链接谁打开授权、机器就进谁的网络,一律打码后再打印。
+REDACT = [re.compile(r"(https://login\.tailscale\.com/a/)[A-Za-z0-9]+")]
+
+
+def redact(text: str) -> str:
+    for pat in REDACT:
+        text = pat.sub(r"\1<redacted>", text)
+    return text
 
 
 def secret_stdin(secrets: dict) -> bytes:
@@ -116,9 +126,9 @@ def run_entry(target: Target, app: str, entry: str, env: dict, secrets: dict) ->
     out = r.stdout.decode(errors="replace")
     err = r.stderr.decode(errors="replace")
     for line in out.splitlines():
-        print(f"    | {line}")
+        print(f"    | {redact(line)}")
     for line in err.splitlines():
-        print(f"    ! {line}")
+        print(f"    ! {redact(line)}")
     lines = [ln for ln in out.splitlines() if ln.strip()]
     last = lines[-1] if lines else ""
     if not last.startswith("OBOX_RESULT "):
@@ -153,7 +163,7 @@ def run_app(target: Target, app: str) -> bool:
         try:
             result = run_entry(target, app, entry, env, secrets)
             check_expect(entry, result, step.get("expect", {}))
-            print(f"[{app}] step {i}: ok {json.dumps(result, ensure_ascii=False)[:300]}")
+            print(f"[{app}] step {i}: ok {redact(json.dumps(result, ensure_ascii=False))[:300]}")
         except (AssertionError, json.JSONDecodeError) as e:
             print(f"[{app}] step {i}: FAIL {e}")
             ok = False

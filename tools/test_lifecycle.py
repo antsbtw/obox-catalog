@@ -5,7 +5,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lifecycle import check_expect, effective_params  # noqa: E402
+from lifecycle import check_expect, effective_params, redact  # noqa: E402
 
 MANIFEST = {"params": [
     {"key": "login_method", "type": "select", "default": "web", "options": ["web", "key"]},
@@ -42,6 +42,12 @@ class ExpectTest(unittest.TestCase):
             check_expect("status", {"state": "stopped", "outputs": {"login_url": ""}}, {"outputs": ["login_url"]})
         with self.assertRaises(AssertionError):
             check_expect("status", {"state": "weird"}, {})
+
+
+class RedactTest(unittest.TestCase):
+    def test_login_url(self):
+        self.assertEqual(redact('"login_url": "https://login.tailscale.com/a/1b2c3d4e5f"'),
+                         '"login_url": "https://login.tailscale.com/a/<redacted>"')
 
 
 if __name__ == "__main__":
