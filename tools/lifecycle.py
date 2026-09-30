@@ -2,7 +2,8 @@
 """按 App 执行器的方式在真实机器上跑配方,验证 ci/<app>.json 里写的生命周期(C-3)。
 
 执行方式对齐 README「配方执行约定」:
-  - 入口脚本放在临时目录 /tmp/obox-<随机>/ 的根上,lib/obox.sh 放在其 lib/,权限 700,结束后删除;
+  - 该应用的全部脚本放在临时目录 /tmp/obox-<随机>/ 的根上(配方会互相调用,如 install 末尾 exec ./status),
+    lib/obox.sh 放在其 lib/,权限 700,结束后删除;
   - 工作目录即临时目录;非 root 时 sudo -n;
   - 非密参数经环境变量 OBOX_PARAM_<KEY大写>;secret 参数经 stdin(见 secret_stdin);
   - 按清单补默认值、按 show_if 去掉不显示的参数(不显示的不传);
@@ -102,7 +103,10 @@ def run_entry(target: Target, app: str, entry: str, env: dict, secrets: dict) ->
     tmp = f"/tmp/obox-{uuid.uuid4().hex[:12]}"
     target.sh(f"mkdir -m 700 {tmp} {tmp}/lib")
     try:
-        target.put(os.path.join(ROOT, "apps", app, entry), f"{tmp}/{entry}", "700")
+        app_dir = os.path.join(ROOT, "apps", app)
+        for name in sorted(os.listdir(app_dir)):
+            if name != "manifest.json" and os.path.isfile(os.path.join(app_dir, name)):
+                target.put(os.path.join(app_dir, name), f"{tmp}/{name}", "700")
         target.put(os.path.join(ROOT, "lib", "obox.sh"), f"{tmp}/lib/obox.sh", "600")
         r = target.run_entry(tmp, entry, env, secret_stdin(secrets))
     finally:
