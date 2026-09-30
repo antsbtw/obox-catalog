@@ -4,4 +4,4 @@ cd "$(dirname "$0")"
 . ./lib/obox.sh
 systemctl restart tailscaled || obox_fail "重启失败"
 sleep 2
-exec ./status
+exec bash ./status

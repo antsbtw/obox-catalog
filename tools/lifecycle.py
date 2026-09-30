@@ -2,9 +2,10 @@
 """按 App 执行器的方式在真实机器上跑配方,验证 ci/<app>.json 里写的生命周期(C-3)。
 
 执行方式对齐 README「配方执行约定」:
-  - 该应用的全部脚本放在临时目录 /tmp/obox-<随机>/ 的根上(配方会互相调用,如 install 末尾 exec ./status),
-    lib/obox.sh 放在其 lib/,权限 700,结束后删除;
-  - 工作目录即临时目录;非 root 时 sudo -n;
+  - 该应用除 manifest.json 外的全部文件放在临时目录 /tmp/obox-<随机>/ 的根上,lib/obox.sh 放在其 lib/;
+    umask 077 下创建,**文件 600、没有执行权限**,结束后删除;
+  - 入口按其 shebang 的解释器执行(bash ./install,不是 ./install —— /tmp 可能 noexec),工作目录即临时目录;
+    非 root 时 sudo -n。配方里调用同伴脚本也必须写 bash ./status;
   - 非密参数经环境变量 OBOX_PARAM_<KEY大写>;secret 参数经 stdin(见 secret_stdin);
   - 按清单补默认值、按 show_if 去掉不显示的参数(不显示的不传);
   - 最后一行必须是 OBOX_RESULT {json},退出码非 0 = 失败。
@@ -100,25 +101,35 @@ class Target:
             data = f.read()
         self.sh(f"umask 077; cat > {shlex.quote(remote_path)} && chmod {mode} {shlex.quote(remote_path)}", stdin=data)
 
-    def run_entry(self, tmp: str, entry: str, env: dict, stdin: bytes) -> subprocess.CompletedProcess:
-        # App 执行器:工作目录 = 临时目录,非 root 时 sudo -n;环境变量只带 OBOX_PARAM_*
+    def run_entry(self, tmp: str, entry: str, interp: str, env: dict, stdin: bytes) -> subprocess.CompletedProcess:
+        # App 执行器:工作目录 = 临时目录,按 shebang 用解释器执行(文件无执行权限),非 root 时 sudo -n;
+        # 环境变量只带 OBOX_PARAM_*
         assigns = " ".join(f"{k}={shlex.quote(v)}" for k, v in sorted(env.items()))
+        run = f"env {assigns} {shlex.quote(interp)} ./{entry}"
         cmd = (f"cd {shlex.quote(tmp)} && "
-               f"if [ \"$(id -u)\" = 0 ]; then env {assigns} ./{entry}; "
-               f"else sudo -n env {assigns} ./{entry}; fi")
+               f"if [ \"$(id -u)\" = 0 ]; then {run}; else sudo -n {run}; fi")
         return self.sh(cmd, stdin=stdin, check=False)
+
+
+def interpreter(path: str) -> str:
+    """App 读 shebang 选解释器;目录里的脚本首行必须是 #!/bin/bash(validate.py 检查)。"""
+    with open(path, "rb") as f:
+        line = f.readline().decode().strip()
+    if not line.startswith("#!"):
+        raise SystemExit(f"{path}: no shebang")
+    return line[2:].split()[0]
 
 
 def run_entry(target: Target, app: str, entry: str, env: dict, secrets: dict) -> dict:
     tmp = f"/tmp/obox-{uuid.uuid4().hex[:12]}"
-    target.sh(f"mkdir -m 700 {tmp} {tmp}/lib")
+    target.sh(f"umask 077; mkdir {tmp} {tmp}/lib")
     try:
         app_dir = os.path.join(ROOT, "apps", app)
         for name in sorted(os.listdir(app_dir)):
             if name != "manifest.json" and os.path.isfile(os.path.join(app_dir, name)):
-                target.put(os.path.join(app_dir, name), f"{tmp}/{name}", "700")
+                target.put(os.path.join(app_dir, name), f"{tmp}/{name}", "600")
         target.put(os.path.join(ROOT, "lib", "obox.sh"), f"{tmp}/lib/obox.sh", "600")
-        r = target.run_entry(tmp, entry, env, secret_stdin(secrets))
+        r = target.run_entry(tmp, entry, interpreter(os.path.join(app_dir, entry)), env, secret_stdin(secrets))
     finally:
         # 配方以 root 身份可能在临时目录里留下 root 的文件,本机非 root 时退回 sudo 删
         target.sh(f"rm -rf {tmp} 2>/dev/null || sudo -n rm -rf {tmp}", check=False)

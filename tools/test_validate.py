@@ -9,7 +9,7 @@ import unittest
 from jsonschema import Draft202012Validator
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from validate import check_params  # noqa: E402
+from validate import check_params, direct_sibling_calls  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 with open(os.path.join(ROOT, "schema", "manifest.schema.json")) as f:
@@ -119,6 +119,20 @@ class CrossCheckTest(unittest.TestCase):
         self.expect(lambda m: m["params"][0].update(options=[{"value": "web", "label": {"zh-Hans": "a"}},
                                                                {"value": "web", "label": {"zh-Hans": "b"}}]),
                     "duplicate option")
+
+
+class SiblingCallTest(unittest.TestCase):
+    SIB = {"install", "status", "uninstall", "lib"}
+
+    def test_flags_direct_exec(self):
+        self.assertEqual(direct_sibling_calls("x\nexec ./status\n", self.SIB), [2])
+        self.assertEqual(direct_sibling_calls("out=$(./status)\n", self.SIB), [1])
+        self.assertEqual(direct_sibling_calls("./status || true\n", self.SIB), [1])
+
+    def test_allows_interpreter_and_source(self):
+        text = ('. ./lib/obox.sh\nexec bash ./status\nsource ./lib/obox.sh\n'
+                'KEY_FILE="$PWD/.authkey"\n# exec ./status in a comment\ncurl -o ./tmpfile x\n')
+        self.assertEqual(direct_sibling_calls(text, self.SIB), [])
 
 
 if __name__ == "__main__":

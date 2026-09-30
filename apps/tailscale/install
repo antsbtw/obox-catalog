@@ -112,4 +112,4 @@ printf 'login_method=%s\nhostname=%s\nexit_node=%s\n' "$LOGIN_METHOD" "$HOSTNAME
 tailscale version 2>/dev/null | head -1 > "$STATE_DIR/version" || true
 
 # 5. 结果：与 status 同一份输出
-exec ./status
+exec bash ./status

@@ -17,6 +17,24 @@ REQUIRED_SCRIPTS = ("install", "uninstall", "status")
 SCRIPT_RE = re.compile(r"^(install|uninstall|status|action-[a-z][a-z0-9-]*|inspect-[a-z][a-z0-9-]*)$")
 
 
+def direct_sibling_calls(text: str, siblings: set) -> list:
+    """上传后的脚本是 600 且 /tmp 可能 noexec:调用同伴脚本必须经解释器(bash ./status),
+    source 用 `. ./lib/obox.sh`。返回直接执行同伴脚本(./status、exec ./status)的行号。"""
+    bad = []
+    for n, line in enumerate(text.splitlines(), 1):
+        code = line.split("#", 1)[0] if not line.lstrip().startswith("#!") else ""
+        for m in re.finditer(r"\./([A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)?)", code):
+            name = m.group(1)
+            if name.split("/")[0] not in siblings:
+                continue
+            before = code[: m.start()].rstrip()
+            prev = before.split()[-1] if before.split() else ""
+            if prev not in ("bash", ".", "source"):
+                bad.append(n)
+                break
+    return bad
+
+
 def option_values(param):
     """select 的取值集合:options 是字符串数组或 {value, label} 数组。"""
     return [o if isinstance(o, str) else o.get("value") for o in param.get("options", [])]
@@ -128,6 +146,10 @@ def main() -> int:
             r = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
             if r.returncode != 0:
                 err(f"{fname}: bash -n: {r.stderr.strip()}")
+            with open(path, encoding="utf-8", errors="replace") as f:
+                lines = direct_sibling_calls(f.read(), files | {"lib"})
+            if lines:
+                err(f"{fname}: line {lines}: 同伴脚本须经解释器调用(bash ./x),上传后无执行权限且 /tmp 可能 noexec")
 
     with open(os.path.join(ROOT, "platform.json")) as f:
         p = json.load(f)

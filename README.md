@@ -32,7 +32,9 @@ keys/*.pub.pem                签名公钥(App 内置同一份)
 |---|---|
 | 上传 | App 把**该应用的全部脚本**(`apps/<id>/` 下除 `manifest.json` 外的文件)写到临时目录 `/tmp/obox-<随机>/` 的**根**上 —— 配方之间会互相调用(如 `install` 末尾 `exec ./status`);`lib/` 下的文件写到其 `lib/`;权限 700,结束后(无论成败)删除 |
 | 路径 | 上传到机器上的路径最多两级(如 `status`、`lib/obox.sh`),每级只含字母数字与 `._-`,不以点开头 |
-| 入口 | 入口脚本位于临时目录根上,按自身 shebang(`#!/bin/bash`)执行,**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
+| 入口 | 入口脚本位于临时目录根上,App 读出 shebang(`#!/bin/bash`)**用解释器执行**(`bash ./install`),**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
+| 权限 | 临时目录建在 `umask 077` 下,上传的文件都是 **600、没有执行权限**,`/tmp` 还可能挂成 `noexec`。**调用同伴脚本必须经解释器**:写 `bash ./status`,不能写 `./status` 或 `exec ./status`(`validate.py` 检查) |
+| 同名 | 应用自己的文件与 `lib/` 下的文件重名时,以应用自己的为准 |
 | 身份 | 非 root 时 `sudo -n` |
 | 参数 | 非密参数经环境变量 `OBOX_PARAM_<KEY大写>`(bool 为 `true`/`false`);**`secret` 类型经 stdin**(环境变量在 `/proc` 可见):一个 JSON 对象 `{"<key>": "<值>"}`,只含本次显示的密参(没有则 `{}`),**写完必须关闭 stdin(EOF)**,配方读到 EOF 为止 |
 | 显示条件 | 参数带 `show_if` 且条件不满足时,该参数不显示、不校验、**不传给配方**(环境变量与 stdin 都没有) |
