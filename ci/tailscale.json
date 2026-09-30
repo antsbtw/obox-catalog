@@ -7,7 +7,7 @@
     { "run": "install", "params": { "login_method": "web", "ssh": true } },
     { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 1 ]", "desc": "重复 web 安装后只剩一个等登录的 tailscale up" },
     { "check": "tailscale debug prefs | python3 -c 'import json,sys; p=json.load(sys.stdin); print(\"RunSSH\", p.get(\"RunSSH\")); sys.exit(0 if p.get(\"RunSSH\") is True else 1)'", "desc": "ssh=true 后 RunSSH 为 true" },
-    { "check": "grep -qx 'ssh=true' /var/lib/obox/apps/tailscale/params && stat -c '%a %U' /var/lib/obox/apps/tailscale/params", "desc": "ssh 设置记入 params(root 600)" },
+    { "check": "grep -qx 'ssh=true' /var/lib/obox/apps/tailscale/params && m=$(stat -c '%a %U' /var/lib/obox/apps/tailscale/params) && echo \"$m\" && [ \"$m\" = '600 root' ]", "desc": "ssh 设置记入 params(配方在 umask 077 下,应为 600 root)" },
     { "run": "action-restart", "expect": { "state": "stopped", "outputs": ["login_url"] } },
     { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 1 ]", "desc": "重启后仍只有一个等登录的 tailscale up" },
     { "check": "tailscale debug prefs | python3 -c 'import json,sys; p=json.load(sys.stdin); print(\"RunSSH\", p.get(\"RunSSH\")); sys.exit(0 if p.get(\"RunSSH\") is True else 1)'", "desc": "重启重新登录后 RunSSH 仍为 true" },

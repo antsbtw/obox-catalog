@@ -113,10 +113,12 @@ class Target:
         # App 执行器:工作目录 = 临时目录,按 shebang 用解释器执行(文件无执行权限),非 root 时 sudo -n;
         # 环境变量只带 OBOX_PARAM_*
         assigns = " ".join(f"{k}={shlex.quote(v)}" for k, v in sorted(env.items()))
-        run = f"env {assigns} {shlex.quote(interp)} ./{entry}"
-        # umask 077 对配方进程生效(sudo 取调用者与 sudoers umask 的并集,仍是 077)
-        cmd = (f"umask 077 && cd {shlex.quote(tmp)} && "
-               f"if [ \"$(id -u)\" = 0 ]; then {run}; else sudo -n {run}; fi")
+        # umask 077 在提权之后再设:有的 sudo 配置(如 GitHub runner)会把 umask 重置为 022,
+        # 放在 sudo 外面就测不到最严格的情形 —— 配方必须在 077 下也能工作
+        inner = f"umask 077 && exec env {assigns} {shlex.quote(interp)} ./{entry}"
+        cmd = (f"cd {shlex.quote(tmp)} && "
+               f"if [ \"$(id -u)\" = 0 ]; then bash -c {shlex.quote(inner)}; "
+               f"else sudo -n bash -c {shlex.quote(inner)}; fi")
         return self.sh(cmd, stdin=stdin, check=False)
 
 
