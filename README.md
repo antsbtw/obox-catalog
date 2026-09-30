@@ -19,7 +19,8 @@ apps/<id>/action-<id>         每个 actions[] 条目一个
 apps/<id>/inspect-<id>        可选:透明度面板的只读查询
 lib/obox.sh                   配方公共函数(随包下发,上传到临时目录的 lib/)
 platform.json                 签名的平台配置(兜底 release tag、镜像偏好)
-tools/                        validate / build / sign / verify / keygen
+ci/<id>.json                  CI 全流程步骤(install → status → uninstall …),不进签名包
+tools/                        validate / build / sign / verify / keygen / lifecycle(+ 单元测试)
 keys/*.pub.pem                签名公钥(App 内置同一份)
 ```
 
@@ -29,11 +30,14 @@ keys/*.pub.pem                签名公钥(App 内置同一份)
 
 | 项 | 约定 |
 |---|---|
-| 上传 | App 把本次要用的脚本写到临时目录 `/tmp/obox-<随机>/` 的**根**上,`lib/` 下的文件写到其 `lib/`;权限 700,结束后(无论成败)删除 |
+| 上传 | App 把**该应用的全部脚本**(`apps/<id>/` 下除 `manifest.json` 外的文件)写到临时目录 `/tmp/obox-<随机>/` 的**根**上 —— 配方之间会互相调用(如 `install` 末尾 `exec ./status`);`lib/` 下的文件写到其 `lib/`;权限 700,结束后(无论成败)删除 |
 | 路径 | 上传到机器上的路径最多两级(如 `status`、`lib/obox.sh`),每级只含字母数字与 `._-`,不以点开头 |
-| 入口 | 入口脚本位于临时目录根上,按自身 shebang(`#!/bin/bash`)执行,**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
+| 入口 | 入口脚本位于临时目录根上,App 读出 shebang(`#!/bin/bash`)**用解释器执行**(`bash ./install`),**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
+| 权限 | 临时目录建在 `umask 077` 下,上传的文件都是 **600、没有执行权限**,`/tmp` 还可能挂成 `noexec`。**调用同伴脚本必须经解释器**:写 `bash ./status`,不能写 `./status` 或 `exec ./status`(`validate.py` 检查) |
+| 同名 | 应用自己的文件与 `lib/` 下的文件重名时,以应用自己的为准 |
 | 身份 | 非 root 时 `sudo -n` |
-| 参数 | 非密参数经环境变量 `OBOX_PARAM_<KEY大写>`;**`secret` 类型经 stdin**(环境变量在 `/proc` 可见) |
+| 参数 | 非密参数经环境变量 `OBOX_PARAM_<KEY大写>`(bool 为 `true`/`false`);**`secret` 类型经 stdin**(环境变量在 `/proc` 可见):一个 JSON 对象 `{"<key>": "<值>"}`,只含本次显示的密参(没有则 `{}`),**写完必须关闭 stdin(EOF)**,配方读到 EOF 为止 |
+| 显示条件 | 参数带 `show_if` 且条件不满足时,该参数不显示、不校验、**不传给配方**(环境变量与 stdin 都没有) |
 | 日志 | stdout/stderr 逐行实时显示在 App |
 | 结果 | **最后一行** `OBOX_RESULT {json}`;退出码非 0 = 失败 |
 | `status` | `{"state":"running|stopped|failed|not_installed","version":…,"ports":[{"port":…,"protocols":[…]}],"outputs":{…}}`。**实际端口以这里为准**,防火墙读它 |
@@ -86,9 +90,37 @@ tools/sign.sh /tmp/dist/catalog-1.tar.gz /tmp/test.pem
 tools/verify.sh /tmp/dist/catalog-1.tar.gz /tmp/k
 ```
 
+## 清单字段补充(2026-09-30)
+
+| 字段 | 位置 | 含义 |
+|---|---|---|
+| `channel` | 顶层 | `stable`(缺省)/ `beta`。beta 只给测试版 App,正式版 App 不显示;签名、发布与 stable 相同 |
+| `show_if` | `params[]` | `{"<其他参数 key>": 值或值列表}`,全部满足才显示。不能引用自己、secret 参数,不能成环;select 的取值必须是其选项,bool 必须是 true/false(`validate.py` 检查) |
+| `options` | `params[]`(`select`) | 字符串数组 `["web","key"]`,或带显示名 `[{"value":"web","label":{…}}]`,两种写法不能混用;`default` 必须是选项之一 |
+
+老版本 App 不认识 `show_if` 只会多显示一个框;`options` 两种写法新版 App 都认。
+
+## CI 全流程(C-3)
+
+`ci/<id>.json` 写该应用在真实机器上的生命周期,`tools/lifecycle.py` 按 App 执行器的方式执行并核对:
+
+```json
+{"os": ["ubuntu-24.04", "debian-12"],
+ "steps": [{"run": "install", "params": {"login_method": "web"}},
+           {"run": "status", "expect": {"state": "stopped", "outputs": ["login_url"]}},
+           {"run": "uninstall"},
+           {"run": "status", "expect": {"state": "not_installed"}}]}
+```
+
+- Ubuntu 24.04:GitHub runner 本机(完整 VM,systemd,`sudo -n`);
+- Debian 12:runner 上的 incus 系统容器(systemd、透传 `/dev/net/tun`),以 root 执行;
+- 本地调试:`python3 tools/lifecycle.py --target docker:<容器名> <id>`(多数容器没有 systemd,只适合不依赖服务的配方)。
+
+需要真实凭据的路径(如 Tailscale 的 Auth Key)不进 CI,联调时手测。
+
 ## 加一个应用
 
-1. `apps/<id>/manifest.json` + 三个必需脚本(+ 每个 action 一个脚本)
+1. `apps/<id>/manifest.json` + 三个必需脚本(+ 每个 action 一个脚本);能在 CI 里跑通的,加 `ci/<id>.json`
 2. 用到新的参数或输出**类型**、新的原生扩展、或 `min_client` 高于当前 App → 先和客户端对齐,那需要发版
 3. 托管机:不允许就写 `"hosted": {"allowed": false}`;会让托管机变相中转的参数放进 `hidden_params`
 4. 开 PR,两边各一人评审

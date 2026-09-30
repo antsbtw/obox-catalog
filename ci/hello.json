@@ -1,0 +1,9 @@
+{
+  "os": ["ubuntu-24.04", "debian-12"],
+  "steps": [
+    { "run": "install" },
+    { "run": "status", "expect": { "state": "running", "outputs": ["os", "kernel"] } },
+    { "run": "uninstall" },
+    { "run": "status", "expect": { "state": "running" } }
+  ]
+}

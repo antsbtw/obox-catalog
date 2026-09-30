@@ -1,0 +1,10 @@
+{
+  "os": ["ubuntu-24.04", "debian-12"],
+  "steps": [
+    { "run": "install", "params": { "login_method": "web" } },
+    { "run": "status", "expect": { "state": "stopped", "outputs": ["login_url"] } },
+    { "run": "action-restart" },
+    { "run": "uninstall" },
+    { "run": "status", "expect": { "state": "not_installed" } }
+  ]
+}
