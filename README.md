@@ -17,6 +17,7 @@ apps/<id>/uninstall
 apps/<id>/status              只读
 apps/<id>/action-<id>         每个 actions[] 条目一个
 apps/<id>/inspect-<id>        可选:透明度面板的只读查询
+apps/<id>/<名字>.sh           可选:应用内共用函数,首行 `# shellcheck shell=bash`,由同应用脚本 `. ./<名字>.sh` 引入,不是入口
 lib/obox.sh                   配方公共函数(随包下发,上传到临时目录的 lib/)
 platform.json                 签名的平台配置(兜底 release tag、镜像偏好)
 ci/<id>.json                  CI 全流程步骤(install → status → uninstall …),不进签名包
@@ -24,7 +25,7 @@ tools/                        validate / build / sign / verify / keygen / lifecy
 keys/*.pub.pem                签名公钥(App 内置同一份)
 ```
 
-目录里只允许以上几种文件;脚本首行必须是 `#!/bin/bash`,必须可执行、过 `bash -n` 与 shellcheck。
+目录里只允许以上几种文件;入口脚本首行必须是 `#!/bin/bash`,必须可执行、过 `bash -n` 与 shellcheck;共用文件过 `bash -n` 与 shellcheck。
 
 ## 配方执行约定(App 执行器实现,对所有配方相同)
 
@@ -33,6 +34,7 @@ keys/*.pub.pem                签名公钥(App 内置同一份)
 | 上传 | App 把**该应用的全部脚本**(`apps/<id>/` 下除 `manifest.json` 外的文件)写到临时目录 `/tmp/obox-<随机>/` 的**根**上 —— 配方之间会互相调用(如 `install` 末尾 `exec ./status`);`lib/` 下的文件写到其 `lib/`;权限 700,结束后(无论成败)删除 |
 | 路径 | 上传到机器上的路径最多两级(如 `status`、`lib/obox.sh`),每级只含字母数字与 `._-`,不以点开头 |
 | 入口 | 入口脚本位于临时目录根上,App 读出 shebang(`#!/bin/bash`)**用解释器执行**(`bash ./install`),**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
+| umask | **配方进程在 `umask 077` 下运行**,它新建的所有文件默认 600、目录 700。**需要被非 root 进程读的文件必须显式 `chmod`** —— 如 apt 公钥与源列表(apt 以 `_apt` 用户验签,读不到即「仓库未签名」拒装)、给其他服务读的配置。CI 同样在 `umask 077` 下执行 |
 | 权限 | 临时目录建在 `umask 077` 下,上传的文件都是 **600、没有执行权限**,`/tmp` 还可能挂成 `noexec`。**调用同伴脚本必须经解释器**:写 `bash ./status`,不能写 `./status` 或 `exec ./status`(`validate.py` 检查) |
 | 同名 | 应用自己的文件与 `lib/` 下的文件重名时,以应用自己的为准 |
 | 身份 | 非 root 时 `sudo -n` |
@@ -112,8 +114,9 @@ tools/verify.sh /tmp/dist/catalog-1.tar.gz /tmp/k
            {"run": "status", "expect": {"state": "not_installed"}}]}
 ```
 
+- 步骤除 `run`(执行入口,可带 `params` / `secrets` / `expect`)外,还可写 `{"check": "<shell>", "desc": "…"}`:以 root 在目标机器上执行,退出码 0 = 通过,用来断言配方留下的系统状态(如后台进程数)。用 `pgrep -f` 时给模式加边界(如 `'(^|/)tailscale up( |$)'`),否则会把检查命令自己的 shell 也数进去
 - Ubuntu 24.04:GitHub runner 本机(完整 VM,systemd,`sudo -n`);
-- Debian 12:runner 上的 incus 系统容器(systemd、透传 `/dev/net/tun`),以 root 执行;
+- Debian 12 / Debian 13:runner 上的 incus 系统容器(systemd、透传 `/dev/net/tun`),以 root 执行;
 - 本地调试:`python3 tools/lifecycle.py --target docker:<容器名> <id>`(多数容器没有 systemd,只适合不依赖服务的配方)。
 
 需要真实凭据的路径(如 Tailscale 的 Auth Key)不进 CI,联调时手测。

@@ -15,6 +15,9 @@ from jsonschema import Draft202012Validator
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REQUIRED_SCRIPTS = ("install", "uninstall", "status")
 SCRIPT_RE = re.compile(r"^(install|uninstall|status|action-[a-z][a-z0-9-]*|inspect-[a-z][a-z0-9-]*)$")
+# 应用内共用文件:不是入口,由同应用的脚本以 `. ./<名字>.sh` 引入(执行器上传应用的全部文件)
+HELPER_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}\.sh$")
+HELPER_HEAD = b"# shellcheck shell=bash"
 
 
 def direct_sibling_calls(text: str, siblings: set) -> list:
@@ -131,8 +134,22 @@ def main() -> int:
             if s not in files:
                 err(f"missing script {s}")
         for fname in sorted(files):
+            if HELPER_RE.match(fname):
+                path = os.path.join(base, fname)
+                with open(path, "rb") as f:
+                    head = f.readline()
+                if head.strip() != HELPER_HEAD:
+                    err(f"{fname}: shared file must start with '{HELPER_HEAD.decode()}' (sourced, not executed)")
+                r = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
+                if r.returncode != 0:
+                    err(f"{fname}: bash -n: {r.stderr.strip()}")
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    lines = direct_sibling_calls(f.read(), files | {"lib"})
+                if lines:
+                    err(f"{fname}: line {lines}: 同伴脚本须经解释器调用(bash ./x),上传后无执行权限且 /tmp 可能 noexec")
+                continue
             if not SCRIPT_RE.match(fname):
-                err(f"unexpected file {fname} (only install/uninstall/status/action-*/inspect-*)")
+                err(f"unexpected file {fname} (only install/uninstall/status/action-*/inspect-*, or shared <name>.sh)")
                 continue
             if fname.startswith("action-") and fname[len("action-"):] not in actions:
                 err(f"{fname} has no matching actions[] entry")
