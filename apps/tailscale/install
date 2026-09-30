@@ -81,7 +81,7 @@ except Exception: print("")'
 if [ -n "$AUTH_KEY" ]; then
   KEY_FILE="$PWD/.authkey"
   trap 'rm -f "$KEY_FILE"' EXIT
-  printf '%s' "$AUTH_KEY" > "$KEY_FILE"
+  (umask 077; printf '%s' "$AUTH_KEY" > "$KEY_FILE")
   echo "[tailscale] 用 Auth Key 加入网络"
   tailscale up "${UP_ARGS[@]}" --auth-key="file:$KEY_FILE" --timeout=90s \
     || obox_fail "加入网络失败：Auth Key 无效或已过期"
@@ -93,6 +93,8 @@ else
   # 没有 Auth Key 且未登录：后台发起登录，拿到登录链接交给 App。
   # tailscale up 会一直等到用户登录完成；放到后台，登录后它自己结束。
   echo "[tailscale] 等待登录链接"
+  # 日志里有登录链接(谁打开授权,这台机器就进谁的 tailnet),只给 root 读
+  install -m 600 /dev/null /var/log/obox-tailscale-up.log
   setsid nohup tailscale up "${UP_ARGS[@]}" >/var/log/obox-tailscale-up.log 2>&1 < /dev/null &
   for _ in $(seq 1 30); do
     sleep 1

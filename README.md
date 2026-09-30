@@ -34,7 +34,7 @@ keys/*.pub.pem                签名公钥(App 内置同一份)
 | 路径 | 上传到机器上的路径最多两级(如 `status`、`lib/obox.sh`),每级只含字母数字与 `._-`,不以点开头 |
 | 入口 | 入口脚本位于临时目录根上,按自身 shebang(`#!/bin/bash`)执行,**工作目录即临时目录**;公共函数用 `. "$(dirname "$0")/lib/obox.sh"` 引入 |
 | 身份 | 非 root 时 `sudo -n` |
-| 参数 | 非密参数经环境变量 `OBOX_PARAM_<KEY大写>`(bool 为 `true`/`false`);**`secret` 类型经 stdin**(环境变量在 `/proc` 可见)。⚠️ stdin 的编码尚未写定,CI 暂按 JSON 对象 `{"<key>": "<值>"}`(`tools/lifecycle.py` 的 `secret_stdin`),与 App 执行器核对后在此补上 |
+| 参数 | 非密参数经环境变量 `OBOX_PARAM_<KEY大写>`(bool 为 `true`/`false`);**`secret` 类型经 stdin**(环境变量在 `/proc` 可见):一个 JSON 对象 `{"<key>": "<值>"}`,只含本次显示的密参(没有则 `{}`),**写完必须关闭 stdin(EOF)**,配方读到 EOF 为止 |
 | 显示条件 | 参数带 `show_if` 且条件不满足时,该参数不显示、不校验、**不传给配方**(环境变量与 stdin 都没有) |
 | 日志 | stdout/stderr 逐行实时显示在 App |
 | 结果 | **最后一行** `OBOX_RESULT {json}`;退出码非 0 = 失败 |

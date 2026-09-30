@@ -36,7 +36,7 @@ STATES = ("running", "stopped", "failed", "not_installed")
 
 
 def secret_stdin(secrets: dict) -> bytes:
-    """secret 参数经 stdin 的编码。README 尚未写死格式 —— 与 App 执行器核对后在此处改,只此一处。"""
+    """secret 参数经 stdin 的编码:JSON 对象,写完关闭 stdin(README「配方执行约定」)。"""
     return (json.dumps(secrets) + "\n").encode()
 
 
