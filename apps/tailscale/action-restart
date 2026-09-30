@@ -12,8 +12,9 @@ if [ "$(ts_backend_state)" != "Running" ] && [ -z "$(ts_auth_url)" ]; then
   STATE_DIR=$(obox_state_dir tailscale)
   HN=$(sed -n 's/^hostname=//p' "$STATE_DIR/params" 2>/dev/null || true)
   EX=$(sed -n 's/^exit_node=//p' "$STATE_DIR/params" 2>/dev/null || true)
+  SSHP=$(sed -n 's/^ssh=//p' "$STATE_DIR/params" 2>/dev/null || true)
   echo "[tailscale] 未登录，重新获取登录链接"
-  ts_build_up_args "$HN" "${EX:-false}"
+  ts_build_up_args "$HN" "${EX:-false}" "${SSHP:-false}"
   ts_start_web_login "${TS_UP_ARGS[@]}"
 fi
 exec bash ./status   # 同伴脚本一律显式用解释器调用（上传的文件没有执行权限）

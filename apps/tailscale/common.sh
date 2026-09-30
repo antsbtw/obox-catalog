@@ -16,11 +16,13 @@ ts_auth_url() { ts_field AuthURL; }
 # 结束之前留在后台等登录的 tailscale up —— 反复安装 / 重启时不要越积越多。
 ts_stop_pending_login() { pkill -f '(^|/)tailscale up( |$)' 2>/dev/null || true; }
 
-# 按非密参数拼 tailscale up 的参数，放进全局数组 TS_UP_ARGS。$1 = 设备名，$2 = 是否出口节点
+# 按非密参数拼 tailscale up 的参数，放进全局数组 TS_UP_ARGS。
+# $1 = 设备名，$2 = 是否出口节点，$3 = 是否开 Tailscale SSH
 ts_build_up_args() {
   TS_UP_ARGS=(--reset)
   [ -n "${1:-}" ] && TS_UP_ARGS+=(--hostname="$1")
   [ "${2:-false}" = "true" ] && TS_UP_ARGS+=(--advertise-exit-node)
+  [ "${3:-false}" = "true" ] && TS_UP_ARGS+=(--ssh)
   return 0
 }
 
