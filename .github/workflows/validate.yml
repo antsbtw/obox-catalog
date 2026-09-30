@@ -56,25 +56,30 @@ jobs:
 
   # GitHub 没有 Debian runner:在 ubuntu runner 上起 incus 系统容器(完整 systemd),
   # 透传 /dev/net/tun(tailscaled 等需要);以 root 执行,对应「隧道会话是 root」的情形。
-  lifecycle-debian-12:
+  lifecycle-debian:
     runs-on: ubuntu-24.04
     needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        debian: ['12', '13']
+    name: lifecycle-debian-${{ matrix.debian }}
     steps:
       - uses: actions/checkout@v4
-      - name: Start Debian 12 system container
+      - name: Start Debian ${{ matrix.debian }} system container
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q incus
           sudo incus admin init --auto
           # runner 上的 docker 把 FORWARD 默认策略设成 DROP,会切断 incus 网桥出网
           sudo iptables -I DOCKER-USER -i incusbr0 -j ACCEPT 2>/dev/null || true
           sudo iptables -I DOCKER-USER -o incusbr0 -j ACCEPT 2>/dev/null || true
-          sudo incus launch images:debian/12 d12
-          sudo incus config device add d12 tun unix-char source=/dev/net/tun path=/dev/net/tun
+          sudo incus launch images:debian/${{ matrix.debian }} deb
+          sudo incus config device add deb tun unix-char source=/dev/net/tun path=/dev/net/tun
           for i in $(seq 1 60); do
-            sudo incus exec d12 -- getent hosts deb.debian.org >/dev/null 2>&1 && break
+            sudo incus exec deb -- getent hosts deb.debian.org >/dev/null 2>&1 && break
             sleep 2
           done
           # 等 systemd 起完再跑配方(装包、启服务的配方在 starting 阶段会偶发失败);degraded 也算起完
-          sudo incus exec d12 -- sh -c '. /etc/os-release; echo "$PRETTY_NAME"; timeout 120 systemctl is-system-running --wait || true'
-      - name: Lifecycle in Debian 12
-        run: sudo python3 tools/lifecycle.py --target incus:d12 --os debian-12
+          sudo incus exec deb -- sh -c '. /etc/os-release; echo "$PRETTY_NAME"; timeout 120 systemctl is-system-running --wait || true'
+      - name: Lifecycle in Debian ${{ matrix.debian }}
+        run: sudo python3 tools/lifecycle.py --target incus:deb --os debian-${{ matrix.debian }}

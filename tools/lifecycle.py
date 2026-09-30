@@ -4,6 +4,7 @@
 执行方式对齐 README「配方执行约定」:
   - 该应用除 manifest.json 外的全部文件放在临时目录 /tmp/obox-<随机>/ 的根上,lib/obox.sh 放在其 lib/;
     umask 077 下创建,**文件 600、没有执行权限**,结束后删除;
+  - **配方进程本身也在 umask 077 下**(与 App 一致):配方新建的文件默认 600,需要给非 root 读的(apt 公钥等)须显式 chmod;
   - 入口按其 shebang 的解释器执行(bash ./install,不是 ./install —— /tmp 可能 noexec),工作目录即临时目录;
     非 root 时 sudo -n。配方里调用同伴脚本也必须写 bash ./status;
   - 非密参数经环境变量 OBOX_PARAM_<KEY大写>;secret 参数经 stdin(见 secret_stdin);
@@ -18,7 +19,7 @@
 用法:
   python3 tools/lifecycle.py --target local [app ...]      # 不给 app = ci/ 下全部
 ci/<app>.json 格式:
-  {"os": ["ubuntu-24.04", "debian-12"],                     # 可选,缺省两者都跑
+  {"os": ["ubuntu-24.04", "debian-12", "debian-13"],        # 可选,缺省全跑
    "steps": [
      {"run": "install", "params": {"login_method": "web"}, "secrets": {}},
      {"run": "status", "expect": {"state": "stopped", "outputs": ["login_url"]}},
@@ -113,7 +114,8 @@ class Target:
         # 环境变量只带 OBOX_PARAM_*
         assigns = " ".join(f"{k}={shlex.quote(v)}" for k, v in sorted(env.items()))
         run = f"env {assigns} {shlex.quote(interp)} ./{entry}"
-        cmd = (f"cd {shlex.quote(tmp)} && "
+        # umask 077 对配方进程生效(sudo 取调用者与 sudoers umask 的并集,仍是 077)
+        cmd = (f"umask 077 && cd {shlex.quote(tmp)} && "
                f"if [ \"$(id -u)\" = 0 ]; then {run}; else sudo -n {run}; fi")
         return self.sh(cmd, stdin=stdin, check=False)
 
@@ -212,7 +214,7 @@ def main():
         if not os.path.isdir(os.path.join(ROOT, "apps", app)):
             raise SystemExit(f"ci/{app}.json: no apps/{app}")
         with open(os.path.join(ROOT, "ci", f"{app}.json")) as f:
-            oses = json.load(f).get("os", ["ubuntu-24.04", "debian-12"])
+            oses = json.load(f).get("os", ["ubuntu-24.04", "debian-12", "debian-13"])
         if a.os and a.os not in oses:
             print(f"[{app}] skipped on {a.os}")
             continue

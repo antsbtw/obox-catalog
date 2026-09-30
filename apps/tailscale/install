@@ -48,13 +48,18 @@ if ! command -v tailscale >/dev/null 2>&1; then
   case "${ID:-}" in debian|ubuntu) ;; *) obox_fail "不支持的系统：${ID:-unknown}" ;; esac
   [ -n "${VERSION_CODENAME:-}" ] || obox_fail "无法识别系统版本代号"
   echo "[tailscale] 添加官方软件源 pkgs.tailscale.com（${ID} ${VERSION_CODENAME}）"
+  # 上次失败留下的源配置会让下面第一个 apt-get update 就失败、永远走不到修复 —— 先清掉
+  rm -f /etc/apt/sources.list.d/tailscale.list /usr/share/keyrings/tailscale-archive-keyring.gpg
   apt-get update -qq
   apt-get install -y -qq curl ca-certificates >/dev/null
   install -d -m 0755 /usr/share/keyrings
+  # ⚠️ 执行器在 umask 077 下运行，新建文件默认 600。apt 验签是以 _apt 用户读公钥的，
+  #    600 读不到 →「仓库未签名」拒装（Debian 13 真机踩到）。公钥与源列表是公开信息，显式 644。
   curl -fsSL "https://pkgs.tailscale.com/stable/${ID}/${VERSION_CODENAME}.noarmor.gpg" \
     -o /usr/share/keyrings/tailscale-archive-keyring.gpg
   curl -fsSL "https://pkgs.tailscale.com/stable/${ID}/${VERSION_CODENAME}.tailscale-keyring.list" \
     -o /etc/apt/sources.list.d/tailscale.list
+  chmod 644 /usr/share/keyrings/tailscale-archive-keyring.gpg /etc/apt/sources.list.d/tailscale.list
   apt-get update -qq
   echo "[tailscale] 安装 tailscale"
   apt-get install -y -qq tailscale >/dev/null

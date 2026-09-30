@@ -1,5 +1,5 @@
 {
-  "os": ["ubuntu-24.04", "debian-12"],
+  "os": ["ubuntu-24.04", "debian-12", "debian-13"],
   "steps": [
     { "run": "install" },
     { "run": "status", "expect": { "state": "running", "outputs": ["os", "kernel"] } },
