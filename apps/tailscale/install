@@ -17,6 +17,7 @@ STATE_DIR=$(obox_state_dir tailscale)
 LOGIN_METHOD=${OBOX_PARAM_LOGIN_METHOD:-web}
 HOSTNAME_PARAM=${OBOX_PARAM_HOSTNAME:-}
 EXIT_NODE=${OBOX_PARAM_EXIT_NODE:-false}
+SSH_PARAM=${OBOX_PARAM_SSH:-false}
 
 if [ -n "$HOSTNAME_PARAM" ] && ! printf '%s' "$HOSTNAME_PARAM" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$'; then
   obox_fail "设备名只能用字母、数字和连字符（1–63 个字符）"
@@ -67,7 +68,7 @@ fi
 systemctl enable --now tailscaled >/dev/null 2>&1 || obox_fail "tailscaled 服务启动失败"
 
 # 2. 出口节点需要开转发
-ts_build_up_args "$HOSTNAME_PARAM" "$EXIT_NODE"
+ts_build_up_args "$HOSTNAME_PARAM" "$EXIT_NODE" "$SSH_PARAM"
 if [ "$EXIT_NODE" = "true" ]; then
   printf 'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n' > /etc/sysctl.d/99-obox-tailscale.conf
   sysctl -q -p /etc/sysctl.d/99-obox-tailscale.conf || true
@@ -97,7 +98,7 @@ fi
 
 # 4. 记下非密参数与版本（不含 auth_key）
 mkdir -p "$STATE_DIR"
-printf 'login_method=%s\nhostname=%s\nexit_node=%s\n' "$LOGIN_METHOD" "$HOSTNAME_PARAM" "$EXIT_NODE" > "$STATE_DIR/params"
+printf 'login_method=%s\nhostname=%s\nexit_node=%s\nssh=%s\n' "$LOGIN_METHOD" "$HOSTNAME_PARAM" "$EXIT_NODE" "$SSH_PARAM" > "$STATE_DIR/params"
 tailscale version 2>/dev/null | head -1 > "$STATE_DIR/version" || true
 
 # 5. 结果：与 status 同一份输出

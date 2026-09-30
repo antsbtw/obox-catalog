@@ -38,7 +38,8 @@ elif backend in ("NeedsLogin", "NeedsMachineAuth", "Stopped", "Starting", "NoSta
 else:
     state = "failed"
 
-outputs = {"backend_state": backend or "unknown"}
+# 运行中时状态已由 App 的状态标记显示，不再重复；其他情况给出原始状态便于排查
+outputs = {} if state == "running" else {"backend_state": backend or "unknown"}
 if ipv4: outputs["tailnet_ip"] = ipv4
 if name: outputs["hostname"] = name
 if s.get("AuthURL"): outputs["login_url"] = s["AuthURL"]

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "id": "tailscale",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "min_client": "1.4.0",
   "channel": "beta",
   "name": {
@@ -85,6 +85,20 @@
       "help": {
         "zh-Hans": "在 Tailscale 里显示的名字；留空用这台机器的主机名",
         "en": "Name shown in Tailscale; defaults to the machine's hostname"
+      }
+    },
+    {
+      "key": "ssh",
+      "type": "bool",
+      "required": false,
+      "default": false,
+      "label": {
+        "zh-Hans": "允许用 Tailscale SSH 登录",
+        "en": "Allow Tailscale SSH"
+      },
+      "help": {
+        "zh-Hans": "同一个 Tailscale 账号的电脑可以直接 ssh root@设备名 登录，不用管 SSH 钥匙。如果你改过 Tailscale 的访问策略，策略里要有 ssh 规则。",
+        "en": "Devices on your Tailscale account can ssh root@<device name> without managing SSH keys. If you've customized your Tailscale access policy, it needs an ssh rule."
       }
     },
     {
@@ -173,7 +187,8 @@
   "hosted": {
     "allowed": true,
     "hidden_params": [
-      "exit_node"
+      "exit_node",
+      "ssh"
     ]
   }
 }
