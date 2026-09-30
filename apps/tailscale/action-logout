@@ -1,0 +1,9 @@
+#!/bin/bash
+# 退出登录：这台机器离开 tailnet，软件保留。再次「安装」即可重新登录。
+set -euo pipefail
+cd "$(dirname "$0")"
+. ./lib/obox.sh
+command -v tailscale >/dev/null 2>&1 || obox_fail "Tailscale 未安装"
+tailscale logout || obox_fail "退出登录失败"
+echo "[tailscale] 已退出登录"
+obox_result '{"ok":true}'

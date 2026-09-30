@@ -1,0 +1,18 @@
+#!/bin/bash
+# 卸载：退出登录、停服务、删包与软件源、删节点状态。可重入。
+set -euo pipefail
+cd "$(dirname "$0")"
+. ./lib/obox.sh
+export DEBIAN_FRONTEND=noninteractive
+
+if command -v tailscale >/dev/null 2>&1; then
+  echo "[tailscale] 退出登录"
+  tailscale logout >/dev/null 2>&1 || true
+fi
+systemctl disable --now tailscaled >/dev/null 2>&1 || true
+echo "[tailscale] 删除软件包"
+apt-get purge -y -qq tailscale >/dev/null 2>&1 || true
+rm -f /etc/apt/sources.list.d/tailscale.list /usr/share/keyrings/tailscale-archive-keyring.gpg \
+      /etc/sysctl.d/99-obox-tailscale.conf /var/log/obox-tailscale-up.log
+rm -rf /var/lib/tailscale "$(obox_state_dir tailscale)"
+obox_result '{"ok":true}'

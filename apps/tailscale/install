@@ -1,0 +1,113 @@
+#!/bin/bash
+# Tailscale：安装并加入用户的 tailnet。
+# 可重入：再跑一次 = 修复 / 按新参数重新配置（tailscale up --reset）。
+#
+# 参数：OBOX_PARAM_LOGIN_METHOD（web / key）、OBOX_PARAM_HOSTNAME（可选）、OBOX_PARAM_EXIT_NODE（true/false）
+# 密参（stdin JSON）：auth_key（login_method=key 时必填）。
+#   web：输出登录链接（outputs.login_url），用户在手机上授权；
+#   key：直接入网。
+# ⚠️ auth_key 只写进临时目录里 600 权限的文件、以 file: 形式交给 tailscale，用完即删 ——
+#    不上命令行（/proc 里可见）、不落 /var/lib/obox。
+set -euo pipefail
+cd "$(dirname "$0")"
+. ./lib/obox.sh
+
+STATE_DIR=$(obox_state_dir tailscale)
+LOGIN_METHOD=${OBOX_PARAM_LOGIN_METHOD:-web}
+HOSTNAME_PARAM=${OBOX_PARAM_HOSTNAME:-}
+EXIT_NODE=${OBOX_PARAM_EXIT_NODE:-false}
+
+if [ -n "$HOSTNAME_PARAM" ] && ! printf '%s' "$HOSTNAME_PARAM" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$'; then
+  obox_fail "设备名只能用字母、数字和连字符（1–63 个字符）"
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+
+# python3 用来读 JSON（密参、tailscale status）。Debian / Ubuntu 云镜像自带，缺了就装。
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "[tailscale] 安装 python3"
+  apt-get update -qq && apt-get install -y -qq python3-minimal >/dev/null
+fi
+
+SECRETS=$(cat 2>/dev/null || true)
+AUTH_KEY=""
+if [ -n "$SECRETS" ]; then
+  AUTH_KEY=$(printf '%s' "$SECRETS" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("auth_key") or "")')
+fi
+
+case "$LOGIN_METHOD" in
+  web) AUTH_KEY="" ;;
+  key) [ -n "$AUTH_KEY" ] || obox_fail "选择了 Auth Key 登录，但没有填 Auth Key" ;;
+  *)   obox_fail "未知的登录方式：$LOGIN_METHOD" ;;
+esac
+
+# 1. 安装（已装则跳过）—— 用 Tailscale 官方 apt 源，不用 curl | sh
+if ! command -v tailscale >/dev/null 2>&1; then
+  . /etc/os-release
+  case "${ID:-}" in debian|ubuntu) ;; *) obox_fail "不支持的系统：${ID:-unknown}" ;; esac
+  [ -n "${VERSION_CODENAME:-}" ] || obox_fail "无法识别系统版本代号"
+  echo "[tailscale] 添加官方软件源 pkgs.tailscale.com（${ID} ${VERSION_CODENAME}）"
+  apt-get update -qq
+  apt-get install -y -qq curl ca-certificates >/dev/null
+  install -d -m 0755 /usr/share/keyrings
+  curl -fsSL "https://pkgs.tailscale.com/stable/${ID}/${VERSION_CODENAME}.noarmor.gpg" \
+    -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+  curl -fsSL "https://pkgs.tailscale.com/stable/${ID}/${VERSION_CODENAME}.tailscale-keyring.list" \
+    -o /etc/apt/sources.list.d/tailscale.list
+  apt-get update -qq
+  echo "[tailscale] 安装 tailscale"
+  apt-get install -y -qq tailscale >/dev/null
+fi
+systemctl enable --now tailscaled >/dev/null 2>&1 || obox_fail "tailscaled 服务启动失败"
+
+# 2. 出口节点需要开转发
+UP_ARGS=(--reset)
+[ -n "$HOSTNAME_PARAM" ] && UP_ARGS+=(--hostname="$HOSTNAME_PARAM")
+if [ "$EXIT_NODE" = "true" ]; then
+  printf 'net.ipv4.ip_forward = 1\nnet.ipv6.conf.all.forwarding = 1\n' > /etc/sysctl.d/99-obox-tailscale.conf
+  sysctl -q -p /etc/sysctl.d/99-obox-tailscale.conf || true
+  UP_ARGS+=(--advertise-exit-node)
+else
+  rm -f /etc/sysctl.d/99-obox-tailscale.conf
+fi
+
+backend_state() {
+  tailscale status --json 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("BackendState",""))
+except Exception: print("")'
+}
+
+# 3. 入网
+if [ -n "$AUTH_KEY" ]; then
+  KEY_FILE="$PWD/.authkey"
+  trap 'rm -f "$KEY_FILE"' EXIT
+  printf '%s' "$AUTH_KEY" > "$KEY_FILE"
+  echo "[tailscale] 用 Auth Key 加入网络"
+  tailscale up "${UP_ARGS[@]}" --auth-key="file:$KEY_FILE" --timeout=90s \
+    || obox_fail "加入网络失败：Auth Key 无效或已过期"
+  rm -f "$KEY_FILE"
+elif [ "$(backend_state)" = "Running" ]; then
+  echo "[tailscale] 已登录，按新参数重新配置"
+  tailscale up "${UP_ARGS[@]}" --timeout=60s || obox_fail "重新配置失败"
+else
+  # 没有 Auth Key 且未登录：后台发起登录，拿到登录链接交给 App。
+  # tailscale up 会一直等到用户登录完成；放到后台，登录后它自己结束。
+  echo "[tailscale] 等待登录链接"
+  setsid nohup tailscale up "${UP_ARGS[@]}" >/var/log/obox-tailscale-up.log 2>&1 < /dev/null &
+  for _ in $(seq 1 30); do
+    sleep 1
+    URL=$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("AuthURL",""))
+except Exception: print("")')
+    [ -n "$URL" ] && break
+    [ "$(backend_state)" = "Running" ] && break
+  done
+fi
+
+# 4. 记下非密参数与版本（不含 auth_key）
+mkdir -p "$STATE_DIR"
+printf 'login_method=%s\nhostname=%s\nexit_node=%s\n' "$LOGIN_METHOD" "$HOSTNAME_PARAM" "$EXIT_NODE" > "$STATE_DIR/params"
+tailscale version 2>/dev/null | head -1 > "$STATE_DIR/version" || true
+
+# 5. 结果：与 status 同一份输出
+exec ./status

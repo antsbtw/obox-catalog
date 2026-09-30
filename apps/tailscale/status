@@ -1,0 +1,51 @@
+#!/bin/bash
+# 只读。state：running（已入网）/ stopped（未登录或服务停止，登录链接放 outputs.login_url）/
+# not_installed / failed。
+set -euo pipefail
+cd "$(dirname "$0")"
+. ./lib/obox.sh
+
+if ! command -v tailscale >/dev/null 2>&1; then
+  obox_result '{"state":"not_installed","version":null,"ports":[],"outputs":{}}'
+  exit 0
+fi
+
+VERSION=$(tailscale version 2>/dev/null | head -1 || true)
+ACTIVE=$(systemctl is-active tailscaled 2>/dev/null || true)
+STATUS_JSON=$(tailscale status --json 2>/dev/null || echo '{}')
+
+VERSION="$VERSION" ACTIVE="$ACTIVE" STATUS_JSON="$STATUS_JSON" python3 - <<'PY'
+import json, os
+try:
+    s = json.loads(os.environ.get("STATUS_JSON") or "{}")
+except Exception:
+    s = {}
+backend = s.get("BackendState", "")
+me = s.get("Self") or {}
+ips = s.get("TailscaleIPs") or me.get("TailscaleIPs") or []
+ipv4 = next((ip for ip in ips if ":" not in ip), ips[0] if ips else "")
+name = (me.get("DNSName") or me.get("HostName") or "").rstrip(".")
+
+if os.environ.get("ACTIVE") != "active":
+    state = "stopped"
+elif backend == "Running":
+    state = "running"
+elif backend in ("NeedsLogin", "NeedsMachineAuth", "Stopped", "Starting", "NoState"):
+    state = "stopped"
+else:
+    state = "failed"
+
+outputs = {"backend_state": backend or "unknown"}
+if ipv4: outputs["tailnet_ip"] = ipv4
+if name: outputs["hostname"] = name
+if s.get("AuthURL"): outputs["login_url"] = s["AuthURL"]
+
+result = {
+    "state": state,
+    "version": os.environ.get("VERSION") or None,
+    "ports": [{"port": 41641, "protocols": ["udp"], "public": True}] if state == "running" else [],
+    "outputs": outputs,
+}
+print("[tailscale] " + state + (" " + ipv4 if ipv4 else ""))
+print("OBOX_RESULT " + json.dumps(result, ensure_ascii=False))
+PY

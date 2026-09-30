@@ -1,0 +1,179 @@
+{
+  "schema": 1,
+  "id": "tailscale",
+  "version": "1.0.0",
+  "min_client": "1.4.0",
+  "channel": "beta",
+  "name": {
+    "zh-Hans": "Tailscale",
+    "en": "Tailscale"
+  },
+  "summary": {
+    "zh-Hans": "把这台机器加入你的 Tailscale 网络，用 Tailscale 地址安全访问它",
+    "en": "Join this machine to your Tailscale network and reach it securely by its Tailscale address"
+  },
+  "category": "network",
+  "requires": {
+    "os": [
+      "debian>=12",
+      "ubuntu>=22.04"
+    ],
+    "arch": [
+      "amd64",
+      "arm64"
+    ],
+    "memory_mb": 256,
+    "disk_mb": 200,
+    "components": []
+  },
+  "conflicts": [],
+  "params": [
+    {
+      "key": "login_method",
+      "type": "select",
+      "required": true,
+      "default": "web",
+      "options": [
+        {
+          "value": "web",
+          "label": {
+            "zh-Hans": "网页登录（推荐）",
+            "en": "Sign in on the web (recommended)"
+          }
+        },
+        {
+          "value": "key",
+          "label": {
+            "zh-Hans": "使用 Auth Key",
+            "en": "Use an auth key"
+          }
+        }
+      ],
+      "label": {
+        "zh-Hans": "登录方式",
+        "en": "Sign-in method"
+      },
+      "help": {
+        "zh-Hans": "网页登录：装好后点「打开登录页」，在 Tailscale 里授权即可。",
+        "en": "Web: after install, tap “Open login page” and approve in Tailscale."
+      }
+    },
+    {
+      "key": "auth_key",
+      "type": "secret",
+      "required": true,
+      "show_if": {
+        "login_method": "key"
+      },
+      "label": {
+        "zh-Hans": "Auth Key",
+        "en": "Auth key"
+      },
+      "help": {
+        "zh-Hans": "在 Tailscale 后台 Settings → Keys 生成，以 tskey-auth- 开头。",
+        "en": "Create one in the Tailscale admin console under Settings → Keys (starts with tskey-auth-)."
+      }
+    },
+    {
+      "key": "hostname",
+      "type": "text",
+      "required": false,
+      "label": {
+        "zh-Hans": "设备名（可选）",
+        "en": "Device name (optional)"
+      },
+      "help": {
+        "zh-Hans": "在 Tailscale 里显示的名字；留空用这台机器的主机名",
+        "en": "Name shown in Tailscale; defaults to the machine's hostname"
+      }
+    },
+    {
+      "key": "exit_node",
+      "type": "bool",
+      "required": false,
+      "default": false,
+      "label": {
+        "zh-Hans": "作为出口节点",
+        "en": "Use as exit node"
+      },
+      "help": {
+        "zh-Hans": "让你的其他设备经这台机器上网。还需要在 Tailscale 后台批准。",
+        "en": "Lets your other devices route internet traffic through this machine. Must also be approved in the Tailscale admin console."
+      }
+    }
+  ],
+  "ports": [
+    {
+      "port": 41641,
+      "protocols": [
+        "udp"
+      ],
+      "public": true,
+      "purpose": {
+        "zh-Hans": "直连（不开也能用，会经中继，速度较慢）",
+        "en": "Direct connections (works without it via relays, but slower)"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "restart",
+      "label": {
+        "zh-Hans": "重启",
+        "en": "Restart"
+      }
+    },
+    {
+      "id": "logout",
+      "label": {
+        "zh-Hans": "退出登录",
+        "en": "Log out"
+      },
+      "confirm": true,
+      "destructive": true
+    }
+  ],
+  "outputs": [
+    {
+      "key": "tailnet_ip",
+      "type": "copy",
+      "label": {
+        "zh-Hans": "Tailscale 地址",
+        "en": "Tailscale address"
+      }
+    },
+    {
+      "key": "hostname",
+      "type": "text",
+      "label": {
+        "zh-Hans": "设备名",
+        "en": "Device name"
+      }
+    },
+    {
+      "key": "backend_state",
+      "type": "text",
+      "label": {
+        "zh-Hans": "状态",
+        "en": "State"
+      }
+    },
+    {
+      "key": "login_url",
+      "type": "url",
+      "label": {
+        "zh-Hans": "打开登录页",
+        "en": "Open login page"
+      }
+    }
+  ],
+  "ui": {
+    "extensions": []
+  },
+  "hosted": {
+    "allowed": true,
+    "hidden_params": [
+      "exit_node"
+    ]
+  }
+}
