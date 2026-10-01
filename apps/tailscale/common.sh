@@ -40,3 +40,14 @@ ts_start_web_login() {
   done
   return 0
 }
+
+# 按上次安装时记下的非密参数重新发起网页登录（退出登录 / 重启后用户不必再点「安装」）。
+ts_relogin_with_saved_params() {
+  local state_dir hn ex sshp
+  state_dir=$(obox_state_dir tailscale)
+  hn=$(sed -n 's/^hostname=//p' "$state_dir/params" 2>/dev/null || true)
+  ex=$(sed -n 's/^exit_node=//p' "$state_dir/params" 2>/dev/null || true)
+  sshp=$(sed -n 's/^ssh=//p' "$state_dir/params" 2>/dev/null || true)
+  ts_build_up_args "$hn" "${ex:-false}" "${sshp:-false}"
+  ts_start_web_login "${TS_UP_ARGS[@]}"
+}
