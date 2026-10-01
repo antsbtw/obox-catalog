@@ -11,6 +11,8 @@
     { "run": "action-restart", "expect": { "state": "stopped", "outputs": ["login_url"] } },
     { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 1 ]", "desc": "重启后仍只有一个等登录的 tailscale up" },
     { "check": "tailscale debug prefs | python3 -c 'import json,sys; p=json.load(sys.stdin); print(\"RunSSH\", p.get(\"RunSSH\")); sys.exit(0 if p.get(\"RunSSH\") is True else 1)'", "desc": "重启重新登录后 RunSSH 仍为 true" },
+    { "run": "action-logout", "expect": { "state": "stopped", "outputs": ["login_url"], "no_outputs": ["backend_state"] } },
+    { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 1 ]", "desc": "退出登录后只有一个等登录的 tailscale up" },
     { "run": "uninstall" },
     { "check": "n=$(pgrep -fc '(^|/)tailscale up( |$)' || true); echo \"pending tailscale up: $n\"; [ \"$n\" -eq 0 ]", "desc": "卸载后没有残留的 tailscale up" },
     { "run": "status", "expect": { "state": "not_installed" } }
