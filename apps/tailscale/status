@@ -38,8 +38,10 @@ elif backend in ("NeedsLogin", "NeedsMachineAuth", "Stopped", "Starting", "NoSta
 else:
     state = "failed"
 
-# 运行中时状态已由 App 的状态标记显示，不再重复；其他情况给出原始状态便于排查
-outputs = {} if state == "running" else {"backend_state": backend or "unknown"}
+# 状态已由 App 的状态标记显示（运行中 / 未就绪）。只有少见的状态才附原始值便于排查 ——
+# 「NeedsLogin」这类英文原始值给普通用户看没有意义，等登录时有「打开登录页」就够了（回归 H9）
+COMMON = ("Running", "NeedsLogin", "Starting", "NoState", "")
+outputs = {} if backend in COMMON and state != "failed" else {"backend_state": backend or "unknown"}
 if ipv4: outputs["tailnet_ip"] = ipv4
 if name: outputs["hostname"] = name
 if s.get("AuthURL"): outputs["login_url"] = s["AuthURL"]

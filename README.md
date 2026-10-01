@@ -114,6 +114,7 @@ tools/verify.sh /tmp/dist/catalog-1.tar.gz /tmp/k
            {"run": "status", "expect": {"state": "not_installed"}}]}
 ```
 
+- `expect` 可写 `state`、`outputs`(这些输出项必须存在且非空)、`no_outputs`(这些输出项必须不存在)
 - 步骤除 `run`(执行入口,可带 `params` / `secrets` / `expect`)外,还可写 `{"check": "<shell>", "desc": "…"}`:以 root 在目标机器上执行,退出码 0 = 通过,用来断言配方留下的系统状态(如后台进程数)。用 `pgrep -f` 时给模式加边界(如 `'(^|/)tailscale up( |$)'`),否则会把检查命令自己的 shell 也数进去
 - Ubuntu 24.04:GitHub runner 本机(完整 VM,systemd,`sudo -n`);
 - Debian 12 / Debian 13:runner 上的 incus 系统容器(systemd、透传 `/dev/net/tun`),以 root 执行;

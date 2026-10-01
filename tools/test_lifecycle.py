@@ -43,6 +43,14 @@ class ExpectTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             check_expect("status", {"state": "weird"}, {})
 
+    def test_no_outputs(self):
+        check_expect("status", {"state": "stopped", "outputs": {"login_url": "https://login.tailscale.com/a/x"}},
+                     {"outputs": ["login_url"], "no_outputs": ["backend_state"]})
+        check_expect("status", {"state": "stopped"}, {"no_outputs": ["backend_state"]})
+        with self.assertRaises(AssertionError):
+            check_expect("status", {"state": "stopped", "outputs": {"backend_state": "NeedsLogin"}},
+                         {"no_outputs": ["backend_state"]})
+
 
 class RedactTest(unittest.TestCase):
     def test_login_url(self):

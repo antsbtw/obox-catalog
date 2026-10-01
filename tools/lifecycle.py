@@ -22,10 +22,11 @@ ci/<app>.json 格式:
   {"os": ["ubuntu-24.04", "debian-12", "debian-13"],        # 可选,缺省全跑
    "steps": [
      {"run": "install", "params": {"login_method": "web"}, "secrets": {}},
-     {"run": "status", "expect": {"state": "stopped", "outputs": ["login_url"]}},
+     {"run": "status", "expect": {"state": "stopped", "outputs": ["login_url"], "no_outputs": ["backend_state"]}},
      {"check": "[ $(pgrep -fc 'tailscale up') -eq 1 ]", "desc": "只剩一个等登录的进程"},
      {"run": "uninstall"},
      {"run": "status", "expect": {"state": "not_installed"}}]}
+  expect.outputs:这些输出项必须存在且非空;expect.no_outputs:这些输出项必须不存在
   check:以 root 在目标机器上执行一段 shell,退出码 0 = 通过(用来断言配方留下的系统状态)
 """
 import argparse
@@ -169,6 +170,9 @@ def check_expect(entry: str, result: dict, expect: dict):
     for key in expect.get("outputs", []):
         if not (result.get("outputs") or {}).get(key):
             raise AssertionError(f"{entry}: outputs.{key} missing or empty")
+    for key in expect.get("no_outputs", []):
+        if key in (result.get("outputs") or {}):
+            raise AssertionError(f"{entry}: outputs.{key} present, want absent")
 
 
 def run_app(target: Target, app: str) -> bool:
